@@ -11,6 +11,7 @@ type Props = {
   step?: number;
   recommended?: number;
   outOfRange?: boolean;
+  disabled?: boolean;
   formatValue?: (v: number) => string;
   onChange: (v: number) => void;
   ariaLabel?: string;
@@ -25,6 +26,7 @@ export function SliderRow({
   step = 0.5,
   recommended,
   outOfRange = false,
+  disabled = false,
   formatValue,
   onChange,
   ariaLabel,
@@ -37,7 +39,14 @@ export function SliderRow({
   const displayed = formatValue ? formatValue(value) : value.toString();
 
   return (
-    <div className="flex flex-col" style={{ rowGap: 6 }}>
+    <div
+      className="flex flex-col"
+      style={{
+        rowGap: 6,
+        opacity: disabled ? 0.5 : 1,
+        pointerEvents: disabled ? "none" : undefined,
+      }}
+    >
       <div className="flex items-baseline justify-between">
         <label htmlFor={id} className="mono" style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
           {label}
@@ -62,6 +71,7 @@ export function SliderRow({
           max={max}
           step={step}
           value={value}
+          disabled={disabled}
           onChange={(e) => onChange(parseFloat(e.target.value))}
         />
         {recPercent != null && (

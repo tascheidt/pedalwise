@@ -16,6 +16,17 @@ function configWith(cfg: Config, patch: Partial<Config>): Config {
   return { ...cfg, ...patch };
 }
 
+/** Human-readable label for an elasticity row key. */
+function labelFor(key: string): string {
+  switch (key) {
+    case "saddleHeight":  return "Saddle height";
+    case "crankLength":   return "Crank length";
+    case "cadence":       return "Cadence";
+    case "saddleSetback": return "Setback";
+    default:              return key;
+  }
+}
+
 /** Local hill climber over (saddleHeight, crankLength, cadence, setback). */
 function hillClimb(start: Config): { best: Config; converged: boolean } {
   let cur = start;
@@ -105,18 +116,37 @@ export function optimize(start: Config): Recommendation {
   candidates.sort((a, b) => Math.abs(a.cadenceAtTarget - m.cadence) - Math.abs(b.cadenceAtTarget - m.cadence));
   const topGears = candidates.slice(0, 3);
 
-  // Sensitivity bars — change each parameter by ±5% and measure efficiency change.
-  const baseE = m.grossEfficiency;
-  const measure = (patch: Partial<Config>) => {
-    const e = evaluate(configWith(best, patch)).grossEfficiency;
-    return Math.abs(e - baseE) * 100;
-  };
-  const sensitivity = [
-    { label: "Saddle height",  pctImpact: measure({ saddleHeight: best.saddleHeight * 1.05 }) },
-    { label: "Crank length",   pctImpact: measure({ crankLength:  best.crankLength * 1.05 })  },
-    { label: "Cadence",        pctImpact: measure({ cadence:      best.cadence + 5 })          },
-    { label: "Setback",        pctImpact: measure({ saddleSetback: best.saddleSetback + 1 })   },
-  ];
+  // Sensitivity bars — per-unit elasticities (fixed physical delta per
+  // parameter, evaluated as centered finite differences). Reports
+  // "GE percentage-points per delta-unit", comparable across parameters.
+  // Replaces the prior ±5% perturbation, whose units differed across rows.
+  const elasticities = [
+    { key: "saddleHeight",  delta: 1.0,  unit: "1 cm",   lo: 55,  hi: 95  },
+    { key: "crankLength",   delta: 2.5,  unit: "2.5 mm", lo: 150, hi: 180 },
+    { key: "cadence",       delta: 2.0,  unit: "2 rpm",  lo: 55,  hi: 120 },
+    { key: "saddleSetback", delta: 0.5,  unit: "0.5 cm", lo: 0,   hi: 12  },
+  ] as const;
+
+  const sensitivity = elasticities.map(({ key, delta, unit, lo, hi }) => {
+    const base = (best as unknown as Record<string, number>)[key];
+    const plusVal  = Math.min(hi, base + delta);
+    const minusVal = Math.max(lo, base - delta);
+    const effDelta = (plusVal - minusVal) / 2; // ≈ delta unless clamped
+    const plusE  = evaluate(
+      configWith(best, { [key]: plusVal } as Partial<Config>),
+    ).grossEfficiency;
+    const minusE = evaluate(
+      configWith(best, { [key]: minusVal } as Partial<Config>),
+    ).grossEfficiency;
+    // Per-unit elasticity: |ΔGE| over the actual span, scaled to delta.
+    // (When unclamped, this reduces to |plusE − minusE| / 2 × 100.)
+    const denom = 2 * Math.max(effDelta, 1e-6);
+    const pctImpact = (Math.abs(plusE - minusE) / denom) * delta * 100;
+    return {
+      label: `${labelFor(key)} (per ${unit})`,
+      pctImpact,
+    };
+  });
 
   return {
     fit: {

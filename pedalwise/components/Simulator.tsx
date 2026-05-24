@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Config, Frame, ViewMode } from "@/lib/types";
-import { computeFrame, tangentialForceCurve } from "@/lib/kinematics";
+import type { Config, Frame, Metrics, StrokeCurves, ViewMode } from "@/lib/types";
+import { computeFrame } from "@/lib/kinematics";
 
 type Props = {
   config: Config;
@@ -15,6 +15,8 @@ type Props = {
   className?: string;
   /** Render aspect = width / height */
   aspect?: number;
+  /** Only consumed in diagnostic mode — drives the live force-vector arrows. */
+  metrics?: Metrics | null;
 };
 
 const TAU = Math.PI * 2;
@@ -251,50 +253,22 @@ function drawLegFilled(
   ctx.restore();
 }
 
-function drawTorso(ctx: CanvasRenderingContext2D, cam: Camera, cfg: Config) {
-  // Simple cycling silhouette: torso leans forward 45°, arm reaches to bars.
-  const [hipX, hipY] = worldToCanvas(cam, -cfg.saddleSetback, cfg.saddleHeight);
-  const torsoLen = 55; // cm
-  const forwardAngle = (45 * Math.PI) / 180; // lean from vertical
-  const shoulderXcm = -cfg.saddleSetback + torsoLen * Math.sin(forwardAngle);
-  const shoulderYcm = cfg.saddleHeight + torsoLen * Math.cos(forwardAngle);
-  const [sx, sy] = worldToCanvas(cam, shoulderXcm, shoulderYcm);
-  // Arm
-  const armLen = 55;
-  const armAngle = (60 * Math.PI) / 180;
-  const wristXcm = shoulderXcm + armLen * Math.sin(armAngle);
-  const wristYcm = shoulderYcm - armLen * Math.cos(armAngle);
-  const [wx, wy] = worldToCanvas(cam, wristXcm, wristYcm);
+function drawTorso(ctx: CanvasRenderingContext2D, cam: Camera, frame: Frame) {
+  // Stream D: anchor on precomputed pelvis & shoulder (lean derived from
+  // cfg.barDrop inside computeFrame). The torso visual is the pelvis →
+  // shoulder segment; visual treatment unchanged from the Stream-A baseline.
+  const [hipX, hipY] = worldToCanvas(cam, frame.pelvisX, frame.pelvisY);
+  const [sx, sy] = worldToCanvas(cam, frame.shoulderX, frame.shoulderY);
 
   ctx.save();
   ctx.lineCap = "round";
-  // Torso
+  // Torso: pelvis → shoulder
   ctx.strokeStyle = "rgba(68,64,60,0.92)";
   ctx.lineWidth = 28;
   ctx.beginPath();
   ctx.moveTo(hipX, hipY);
   ctx.lineTo(sx, sy);
   ctx.stroke();
-  // Arm
-  ctx.lineWidth = 11;
-  ctx.strokeStyle = "rgba(120,113,108,0.85)";
-  ctx.beginPath();
-  ctx.moveTo(sx, sy);
-  ctx.lineTo(wx, wy);
-  ctx.stroke();
-  // Neck + head + helmet
-  const neckLen = 12;
-  const headX = sx + Math.cos(forwardAngle) * neckLen;
-  const headY = sy - Math.sin(forwardAngle) * neckLen;
-  ctx.fillStyle = "rgba(68,64,60,0.95)";
-  ctx.beginPath();
-  ctx.arc(headX, headY, 14, 0, TAU);
-  ctx.fill();
-  // Helmet: chunk over the front
-  ctx.fillStyle = "rgba(28,25,23,0.96)";
-  ctx.beginPath();
-  ctx.arc(headX, headY - 4, 13, Math.PI * 0.95, Math.PI * 2.05, false);
-  ctx.fill();
   ctx.restore();
 }
 
@@ -315,32 +289,58 @@ function drawMotionTrail(ctx: CanvasRenderingContext2D, cam: Camera, cfg: Config
   ctx.restore();
 }
 
+/** Linear interp of a 121-sample stroke curve at arbitrary θ ∈ [0, 2π]. */
+function interpStrokeCurve(values: number[], theta: number): number {
+  const N = values.length;
+  if (N === 0) return 0;
+  const t = ((theta % TAU) + TAU) % TAU;
+  const f = (t / TAU) * (N - 1);
+  const i0 = Math.floor(f) % (N - 1);
+  const i1 = (i0 + 1) % (N - 1);
+  const frac = f - Math.floor(f);
+  return values[i0] * (1 - frac) + values[i1] * frac;
+}
+
 function drawForceVectors(
   ctx: CanvasRenderingContext2D,
   cam: Camera,
-  cfg: Config,
   frame: Frame,
+  curves: StrokeCurves | null,
 ) {
-  const crankCm = cfg.crankLength / 10;
+  if (!curves) return;
   const t = frame.crankAngle;
-  // Power phase: between TDC and BDC (θ ∈ (0, π)). Strongest part is ~45°–135°.
-  if (!(t > Math.PI / 4 && t < (3 * Math.PI) / 4)) return;
-  const force = tangentialForceCurve(t);
+  // Real per-frame forces (N) interpolated at the current crank angle.
+  // We render the right leg only — matches the legacy behaviour.
+  const fTan = interpStrokeCurve(curves.tangentialR, t);
+  const fRad = interpStrokeCurve(curves.radialR, t);
+
+  // Only show arrows when there's meaningful force; this lets the upstroke
+  // (~0 N on flat pedals, small unloading on clipped) stay clean.
+  if (Math.abs(fTan) < 5 && Math.abs(fRad) < 5) return;
+
   const [px, py] = worldToCanvas(cam, frame.right.pedal.x, frame.right.pedal.y);
-  // World-frame tangent for forward (CW) rotation = derivative of
-  // (sin θ, cos θ) w.r.t. θ = (cos θ, −sin θ).
+  // World-frame tangent for forward (CW) rotation = (cos θ, −sin θ).
   const txw = Math.cos(t), tyw = -Math.sin(t);
-  // World-frame radial (outward from BB) = pedal direction = (sin θ, cos θ).
+  // World-frame radial (outward from BB) = (sin θ, cos θ).
   const rxw = Math.sin(t), ryw = Math.cos(t);
-  // Canvas helper: world (a,b) → canvas (+a, −b)
+  // World (a,b) → canvas delta (+a, −b)
   const toCanvas = (ox: number, oy: number) => [ox, -oy] as const;
 
-  const len = 60 + force * 80;
-  const rlen = 18 + force * 14;
+  // SCALE: ~200 N maps to a visible arrow; the function is
+  //   len = 60 + min(80, |f| / SCALE) * 80
+  // so 200 N produces a near-max arrow (~140 px) without overflowing.
+  const SCALE = 200;
+  const tanMag = Math.min(80, Math.abs(fTan) / SCALE * 80);
+  const len = 60 + tanMag;
+  const tanSign = fTan >= 0 ? 1 : -1;
+  // Radial arrow length — also scales with magnitude.
+  const radMag = Math.min(40, Math.abs(fRad) / SCALE * 40);
+  const rlen = 18 + radMag;
+  const radSign = fRad >= 0 ? 1 : -1;
 
   ctx.save();
-  // Radial wasted force (gray dashed)
-  const [rcx, rcy] = toCanvas(rxw * rlen, ryw * rlen);
+  // Radial wasted force (gray dashed). Sign decides inward/outward direction.
+  const [rcx, rcy] = toCanvas(rxw * rlen * radSign, ryw * rlen * radSign);
   ctx.strokeStyle = "rgba(120,113,108,0.85)";
   ctx.setLineDash([4, 3]);
   ctx.lineWidth = 1.5;
@@ -349,8 +349,8 @@ function drawForceVectors(
   ctx.lineTo(px + rcx, py + rcy);
   ctx.stroke();
   ctx.setLineDash([]);
-  // Tangential (green)
-  const [tcx, tcy] = toCanvas(txw * len, tyw * len);
+  // Tangential (green). Sign flips arrow direction on the recovery half.
+  const [tcx, tcy] = toCanvas(txw * len * tanSign, tyw * len * tanSign);
   ctx.strokeStyle = "rgba(15,110,86,1)";
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -369,7 +369,7 @@ function drawForceVectors(
   ctx.lineTo(ahx - ux * 8 - ox * 4, ahy - uy * 8 - oy * 4);
   ctx.closePath();
   ctx.fill();
-  // Hip-to-pedal resultant
+  // Hip-to-pedal resultant — visual aid only.
   const [hx, hy] = worldToCanvas(cam, frame.right.hip.x, frame.right.hip.y);
   ctx.strokeStyle = "rgba(163,45,45,0.55)";
   ctx.setLineDash([6, 4]);
@@ -379,7 +379,6 @@ function drawForceVectors(
   ctx.lineTo(px, py);
   ctx.stroke();
   ctx.restore();
-  void crankCm;
 }
 
 function drawAngleLabels(
@@ -422,6 +421,7 @@ export function Simulator({
   scrubAngle = null,
   className,
   aspect = 1.5,
+  metrics = null,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thetaRef = useRef(Math.PI / 4);
@@ -431,6 +431,7 @@ export function Simulator({
   const modeRef = useRef(mode);
   const velRef = useRef(angularVel);
   const scrubRef = useRef<number | null>(scrubAngle);
+  const metricsRef = useRef<Metrics | null>(metrics);
 
   // Keep refs in sync without restarting the RAF loop
   useEffect(() => { cfgRef.current = config; }, [config]);
@@ -438,6 +439,7 @@ export function Simulator({
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { velRef.current = angularVel; }, [angularVel]);
   useEffect(() => { scrubRef.current = scrubAngle; }, [scrubAngle]);
+  useEffect(() => { metricsRef.current = metrics; }, [metrics]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -506,7 +508,7 @@ export function Simulator({
         // Active leg (right)
         drawLegFilled(ctx, cam, frame.right.hip, frame.right.knee, frame.right.ankle, frame.right.pedal, true);
         // Torso on top
-        drawTorso(ctx, cam, cfg);
+        drawTorso(ctx, cam, frame);
         // Motion blur trail
         drawMotionTrail(ctx, cam, cfg, thetaRef.current);
       } else {
@@ -526,7 +528,7 @@ export function Simulator({
           { active: true, jointDots: m === "anatomical" || m === "diagnostic" });
 
         if (m === "anatomical" || m === "diagnostic") drawAngleLabels(ctx, cam, frame);
-        if (m === "diagnostic") drawForceVectors(ctx, cam, cfg, frame);
+        if (m === "diagnostic") drawForceVectors(ctx, cam, frame, metricsRef.current?.curves ?? null);
       }
 
       raf = requestAnimationFrame(step);

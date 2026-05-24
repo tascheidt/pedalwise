@@ -10,3 +10,11 @@
 *.log
 .vercel
 .env*
+
+# Claude Code per-machine state (project-shared agent defs in .claude/agents/ are tracked)
+.claude/agent-memory/
+.claude/skills/
+.claude/settings.local.json
+.claude/projects/
+.agents/
+skills-lock.json
