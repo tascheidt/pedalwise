@@ -22,11 +22,7 @@ import { PersonaSwitcher } from "@/components/workspace/PersonaSwitcher";
 import { Simulator } from "@/components/Simulator";
 import { ControlsRail } from "@/components/ControlsRail";
 import { HudStrip } from "@/components/HudStrip";
-import {
-  RecommendationPanel,
-  RecommendationSkeleton,
-  RecommendationIdle,
-} from "@/components/RecommendationPanel";
+import { RecommendationCard } from "@/components/RecommendationPanel";
 
 import { SessionList } from "@/components/fitter/SessionList";
 import { SessionCompare } from "@/components/fitter/SessionCompare";
@@ -67,6 +63,13 @@ export default function ClientSessionStudioPage({
   // Optimizer + compare modal
   const { state: optState, run: runOptimize, clear: clearOpt } = useOptimizer();
   const [compareOpen, setCompareOpen] = useState(false);
+  const [selectedGearIndex, setSelectedGearIndex] = useState(0);
+
+  // Reset gear selection on every fresh recommendation so the user always
+  // starts on the optimizer's best pick.
+  useEffect(() => {
+    if (optState.kind === "done") setSelectedGearIndex(0);
+  }, [optState]);
 
   const refreshSessions = useCallback(() => {
     const list = listSessionsForClient(clientId);
@@ -152,13 +155,17 @@ export default function ClientSessionStudioPage({
   const handleApply = useCallback(() => {
     if (optState.kind !== "done" || !activeSessionId) return;
     const rec = optState.rec;
-    // Update the working config so the simulator reflects the recommendation.
+    // Commit the cadence dictated by the user's selected gear at the target
+    // speed, not the optimizer's unconstrained continuous cadence — keeps
+    // Apply consistent with the preview the user just inspected.
+    const gear = rec.gears[selectedGearIndex] ?? rec.gears[0];
+    const cadence = Math.round(gear.cadenceAtTarget);
     setConfig((c) => ({
       ...c,
       saddleHeight: rec.fit.saddleHeight,
       crankLength: rec.fit.crankLength,
       saddleSetback: rec.fit.saddleSetback,
-      cadence: rec.goal.cadence,
+      cadence,
     }));
     // Persist the applied recommendation onto the session — the explicit
     // dialogue from principle #5 carries through to the session model.
@@ -168,13 +175,13 @@ export default function ClientSessionStudioPage({
         saddleHeight: rec.fit.saddleHeight,
         saddleSetback: rec.fit.saddleSetback,
       },
-      goalCadence: rec.goal.cadence,
+      goalCadence: cadence,
       metrics: rec.metrics,
       at: Date.now(),
     });
     refreshSessions();
     clearOpt();
-  }, [optState, activeSessionId, refreshSessions, clearOpt]);
+  }, [optState, selectedGearIndex, activeSessionId, refreshSessions, clearOpt]);
 
   // Loading / not-found
   if (!hydrated) {
@@ -353,7 +360,12 @@ export default function ClientSessionStudioPage({
                     ? {
                         ...config,
                         ...optState.rec.fit,
-                        cadence: optState.rec.goal.cadence,
+                        cadence: Math.round(
+                          (
+                            optState.rec.gears[selectedGearIndex] ??
+                            optState.rec.gears[0]
+                          ).cadenceAtTarget,
+                        ),
                       }
                     : config
                 }
@@ -377,29 +389,19 @@ export default function ClientSessionStudioPage({
 
           {/* Recommendation */}
           <div className="flex flex-col gap-3">
-            <div
-              className="rounded-[10px] p-4"
-              style={{
-                background: "var(--color-bg-surface)",
-                border: "1px solid var(--color-border-default)",
+            <RecommendationCard
+              optState={optState}
+              selectedGearIndex={selectedGearIndex}
+              onSelectGear={setSelectedGearIndex}
+              onApply={handleApply}
+              onDismiss={clearOpt}
+              onExport={() => {
+                if (!activeSessionId) return;
+                router.push(
+                  `/fitter/${clientId}/report?session=${activeSessionId}`,
+                );
               }}
-            >
-              {optState.kind === "idle" && <RecommendationIdle />}
-              {optState.kind === "running" && <RecommendationSkeleton />}
-              {optState.kind === "done" && (
-                <RecommendationPanel
-                  rec={optState.rec}
-                  onApply={handleApply}
-                  onDismiss={clearOpt}
-                  onExport={() => {
-                    if (!activeSessionId) return;
-                    router.push(
-                      `/fitter/${clientId}/report?session=${activeSessionId}`,
-                    );
-                  }}
-                />
-              )}
-            </div>
+            />
           </div>
         </div>
       </main>

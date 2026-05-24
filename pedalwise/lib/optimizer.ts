@@ -2,10 +2,23 @@ import type { Config, GearCandidate, Recommendation } from "./types";
 import { evaluate } from "./kinematics";
 import { CHAINRINGS, COGS, WHEEL_DIAMETER_M } from "./presets";
 
-/** Saddle-height target from LeMond + Holmes heuristics. */
+/**
+ * Saddle-height target from LeMond + Holmes heuristics.
+ *
+ * LeMond's canonical multiplier (0.883 × inseam + 1.5 cm) targets the
+ * BB-to-saddle distance *measured along the seat tube* — typical road seat-
+ * tube angles run ≈ 73°, so the slope length and the vertical drop differ.
+ * Our 2D sagittal model uses `saddleHeight` as a vertical world y-coordinate
+ * (see geometry.ts: `sy = cfg.saddleHeight`), so we project LeMond's number
+ * onto the vertical: cos(17°) ≈ 0.956, giving 0.883 × 0.956 ≈ 0.844.
+ *
+ * The +1.5 cm shoe-stack offset is similarly projected. If users want to
+ * cross-check against a bike-fit chart that reports seat-tube length, divide
+ * the simulator's saddleHeight by 0.956.
+ */
 function saddleHeightHeuristic(femur: number, tibia: number, foot: number): number {
   const inseam = femur + tibia + foot * 0.4;
-  return inseam * 0.883 + 1.5;
+  return inseam * 0.844 + 1.44;
 }
 
 function clamp(v: number, lo: number, hi: number) {

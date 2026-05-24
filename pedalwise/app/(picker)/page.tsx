@@ -21,8 +21,7 @@ const ROUTE: Record<Workspace, string> = {
  *     so a returning user lands in their saved chrome.
  *   - Otherwise show three PersonaCards (DIY, Fitter, Engineer). Clicking a
  *     card writes the choice through `setWorkspace()` and pushes to the
- *     persona route. (The Fitter card carries the Recommended badge per the
- *     thesis ordering — fitters are the primary audience.)
+ *     persona route.
  *
  * Storage is LocalStorage — must run client-side, hence `"use client"`.
  */
@@ -144,7 +143,6 @@ export default function PickerPage() {
               ]}
               cta="Open the studio"
               icon={<IconClipboard />}
-              recommended
               onPick={pick}
             />
             <PersonaCard
