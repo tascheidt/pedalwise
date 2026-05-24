@@ -147,11 +147,13 @@ function drawLegOutline(
   cam: Camera,
   hip: { x: number; y: number },
   knee: { x: number; y: number },
+  ankle: { x: number; y: number },
   pedal: { x: number; y: number },
   opts: { active: boolean; ghost?: boolean; jointDots: boolean },
 ) {
   const [hx, hy] = worldToCanvas(cam, hip.x, hip.y);
   const [kx, ky] = worldToCanvas(cam, knee.x, knee.y);
+  const [ax, ay] = worldToCanvas(cam, ankle.x, ankle.y);
   const [px, py] = worldToCanvas(cam, pedal.x, pedal.y);
 
   ctx.save();
@@ -159,31 +161,41 @@ function drawLegOutline(
   ctx.strokeStyle = opts.active ? "rgba(28,25,23,0.95)" : "rgba(168,162,158,0.85)";
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.lineWidth = opts.active ? 8 : 7;
-  // Thigh
+  const wThigh = opts.active ? 8 : 7;
+  const wShank = opts.active ? 7 : 6;
+  const wFoot  = opts.active ? 6 : 5;
+  // Thigh: hip → knee
+  ctx.lineWidth = wThigh;
   ctx.beginPath();
   ctx.moveTo(hx, hy);
   ctx.lineTo(kx, ky);
   ctx.stroke();
-  // Shank+foot
+  // Shank: knee → ankle
+  ctx.lineWidth = wShank;
   ctx.beginPath();
   ctx.moveTo(kx, ky);
+  ctx.lineTo(ax, ay);
+  ctx.stroke();
+  // Foot: ankle → pedal
+  ctx.lineWidth = wFoot;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
   ctx.lineTo(px, py);
   ctx.stroke();
 
-  // Foot tab
+  // Shoe / toe tab extending past the pedal axle (toward +x in world).
   if (opts.active) {
-    const dx = px - kx, dy = py - ky;
+    const dx = px - ax, dy = py - ay;
     const n = Math.hypot(dx, dy) || 1;
     const ux = dx / n, uy = dy / n;
-    // Perpendicular forward
+    // Perpendicular (down on canvas).
     const fx = -uy, fy = ux;
     ctx.fillStyle = "rgba(28,25,23,0.9)";
     ctx.beginPath();
-    ctx.moveTo(px - ux * 2 - fx * 4, py - uy * 2 - fy * 4);
-    ctx.lineTo(px + ux * 12 - fx * 4, py + uy * 12 - fy * 4);
-    ctx.lineTo(px + ux * 12 + fx * 4, py + uy * 12 + fy * 4);
-    ctx.lineTo(px - ux * 2 + fx * 4, py - uy * 2 + fy * 4);
+    ctx.moveTo(px - ux * 1 - fx * 3, py - uy * 1 - fy * 3);
+    ctx.lineTo(px + ux * 9 - fx * 3, py + uy * 9 - fy * 3);
+    ctx.lineTo(px + ux * 9 + fx * 3, py + uy * 9 + fy * 3);
+    ctx.lineTo(px - ux * 1 + fx * 3, py - uy * 1 + fy * 3);
     ctx.closePath();
     ctx.fill();
   }
@@ -192,7 +204,7 @@ function drawLegOutline(
     ctx.fillStyle = "rgba(255,255,255,1)";
     ctx.strokeStyle = "rgba(28,25,23,0.9)";
     ctx.lineWidth = 1.5;
-    for (const [x, y] of [[hx, hy], [kx, ky], [px, py]]) {
+    for (const [x, y] of [[hx, hy], [kx, ky], [ax, ay], [px, py]]) {
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, TAU);
       ctx.fill();
@@ -207,11 +219,13 @@ function drawLegFilled(
   cam: Camera,
   hip: { x: number; y: number },
   knee: { x: number; y: number },
+  ankle: { x: number; y: number },
   pedal: { x: number; y: number },
   active: boolean,
 ) {
   const [hx, hy] = worldToCanvas(cam, hip.x, hip.y);
   const [kx, ky] = worldToCanvas(cam, knee.x, knee.y);
+  const [ax, ay] = worldToCanvas(cam, ankle.x, ankle.y);
   const [px, py] = worldToCanvas(cam, pedal.x, pedal.y);
 
   ctx.save();
@@ -226,6 +240,12 @@ function drawLegFilled(
   ctx.lineWidth = 12;
   ctx.beginPath();
   ctx.moveTo(kx, ky);
+  ctx.lineTo(ax, ay);
+  ctx.stroke();
+  // Foot — slimmer than shank
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
   ctx.lineTo(px, py);
   ctx.stroke();
   ctx.restore();
@@ -285,7 +305,7 @@ function drawMotionTrail(ctx: CanvasRenderingContext2D, cam: Camera, cfg: Config
     const ago = (i + 1) * (Math.PI / 60) * 5; // up to ~25°
     const t = theta - ago;
     const x = crankCm * Math.sin(t);
-    const y = -crankCm * Math.cos(t);
+    const y = crankCm * Math.cos(t);
     const [px, py] = worldToCanvas(cam, x, y);
     ctx.fillStyle = `rgba(28,25,23,${0.18 - i * 0.025})`;
     ctx.beginPath();
@@ -303,42 +323,50 @@ function drawForceVectors(
 ) {
   const crankCm = cfg.crankLength / 10;
   const t = frame.crankAngle;
-  // Only on the propulsive phase
+  // Power phase: between TDC and BDC (θ ∈ (0, π)). Strongest part is ~45°–135°.
   if (!(t > Math.PI / 4 && t < (3 * Math.PI) / 4)) return;
   const force = tangentialForceCurve(t);
   const [px, py] = worldToCanvas(cam, frame.right.pedal.x, frame.right.pedal.y);
-  // Tangential = perpendicular to crank arm, in direction of motion (CW)
-  const tx = Math.cos(t), ty = Math.sin(t);
+  // World-frame tangent for forward (CW) rotation = derivative of
+  // (sin θ, cos θ) w.r.t. θ = (cos θ, −sin θ).
+  const txw = Math.cos(t), tyw = -Math.sin(t);
+  // World-frame radial (outward from BB) = pedal direction = (sin θ, cos θ).
+  const rxw = Math.sin(t), ryw = Math.cos(t);
+  // Canvas helper: world (a,b) → canvas (+a, −b)
+  const toCanvas = (ox: number, oy: number) => [ox, -oy] as const;
+
   const len = 60 + force * 80;
+  const rlen = 18 + force * 14;
+
   ctx.save();
   // Radial wasted force (gray dashed)
-  const rlen = 18 + force * 14;
-  const rx = Math.sin(t), ry = -Math.cos(t);
+  const [rcx, rcy] = toCanvas(rxw * rlen, ryw * rlen);
   ctx.strokeStyle = "rgba(120,113,108,0.85)";
   ctx.setLineDash([4, 3]);
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(px, py);
-  ctx.lineTo(px + rx * rlen, py + ry * rlen * -1);
+  ctx.lineTo(px + rcx, py + rcy);
   ctx.stroke();
   ctx.setLineDash([]);
   // Tangential (green)
-  ctx.strokeStyle = "var(--color-success)";
+  const [tcx, tcy] = toCanvas(txw * len, tyw * len);
   ctx.strokeStyle = "rgba(15,110,86,1)";
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(px, py);
-  ctx.lineTo(px + tx * len, py - ty * len);
+  ctx.lineTo(px + tcx, py + tcy);
   ctx.stroke();
-  // Arrow head
-  const ahx = px + tx * len, ahy = py - ty * len;
-  const ax = -tx, ay = ty;
-  const ox = -ty, oy = -tx;
+  // Arrow head at tip pointing along the tangent direction.
+  const ahx = px + tcx, ahy = py + tcy;
+  const nlen = Math.hypot(tcx, tcy) || 1;
+  const ux = tcx / nlen, uy = tcy / nlen;
+  const ox = -uy, oy = ux;
   ctx.fillStyle = "rgba(15,110,86,1)";
   ctx.beginPath();
   ctx.moveTo(ahx, ahy);
-  ctx.lineTo(ahx + ax * 8 + ox * 4, ahy + ay * 8 + oy * 4);
-  ctx.lineTo(ahx + ax * 8 - ox * 4, ahy + ay * 8 - oy * 4);
+  ctx.lineTo(ahx - ux * 8 + ox * 4, ahy - uy * 8 + oy * 4);
+  ctx.lineTo(ahx - ux * 8 - ox * 4, ahy - uy * 8 - oy * 4);
   ctx.closePath();
   ctx.fill();
   // Hip-to-pedal resultant
@@ -474,9 +502,9 @@ export function Simulator({
 
       if (m === "realistic") {
         // Ghost leg (left) first
-        drawLegFilled(ctx, cam, frame.left.hip, frame.left.knee, frame.left.pedal, false);
+        drawLegFilled(ctx, cam, frame.left.hip, frame.left.knee, frame.left.ankle, frame.left.pedal, false);
         // Active leg (right)
-        drawLegFilled(ctx, cam, frame.right.hip, frame.right.knee, frame.right.pedal, true);
+        drawLegFilled(ctx, cam, frame.right.hip, frame.right.knee, frame.right.ankle, frame.right.pedal, true);
         // Torso on top
         drawTorso(ctx, cam, cfg);
         // Motion blur trail
@@ -485,16 +513,16 @@ export function Simulator({
         // Ghost overlay (current config faded)
         if (ghost) {
           const gframe = computeFrame(ghost, thetaRef.current);
-          drawLegOutline(ctx, cam, gframe.left.hip, gframe.left.knee, gframe.left.pedal,
+          drawLegOutline(ctx, cam, gframe.left.hip, gframe.left.knee, gframe.left.ankle, gframe.left.pedal,
             { active: false, ghost: true, jointDots: false });
-          drawLegOutline(ctx, cam, gframe.right.hip, gframe.right.knee, gframe.right.pedal,
+          drawLegOutline(ctx, cam, gframe.right.hip, gframe.right.knee, gframe.right.ankle, gframe.right.pedal,
             { active: true, ghost: true, jointDots: false });
         }
         // Left (back) leg
-        drawLegOutline(ctx, cam, frame.left.hip, frame.left.knee, frame.left.pedal,
+        drawLegOutline(ctx, cam, frame.left.hip, frame.left.knee, frame.left.ankle, frame.left.pedal,
           { active: false, jointDots: m === "anatomical" || m === "diagnostic" });
         // Right (front/active) leg
-        drawLegOutline(ctx, cam, frame.right.hip, frame.right.knee, frame.right.pedal,
+        drawLegOutline(ctx, cam, frame.right.hip, frame.right.knee, frame.right.ankle, frame.right.pedal,
           { active: true, jointDots: m === "anatomical" || m === "diagnostic" });
 
         if (m === "anatomical" || m === "diagnostic") drawAngleLabels(ctx, cam, frame);

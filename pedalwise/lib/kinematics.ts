@@ -9,29 +9,22 @@ const DEG = 180 / Math.PI;
 /* ------------------------------------------------------------------ */
 
 /**
- * Solve a two-link planar arm reaching a target pedal point from the hip.
- * Returns knee + ankle positions, or null if unreachable.
- *
- * We assume the foot has a fixed angle relative to the shank that is set
- * by the natural pedalling ankle-stroke (a coarse approximation): the
- * ankle is the joint that connects shank → foot, and the pedal is at
- * (ankle + foot · unit-vector toward pedal axis). For a simple model
- * we treat the leg as femur + (tibia + foot) summed, i.e. the foot is
- * locked in line with the shank. This produces clean two-link IK and
- * matches the sagittal silhouette closely.
+ * Solve a two-link planar arm reaching a target ankle point from the hip.
+ * The two links are femur (hip→knee) and tibia (knee→ankle). The foot is
+ * a separate rigid segment from ankle to pedal, modeled below.
  */
 function solveLegIK(
   hip: { x: number; y: number },
-  pedal: { x: number; y: number },
+  ankle: { x: number; y: number },
   femur: number,
-  shank: number, // tibia + foot
+  tibia: number,
   /** Knee bends "forward" (toward +x). */
   forwardKnee: boolean,
 ): { knee: { x: number; y: number }; reachable: boolean } {
-  const dx = pedal.x - hip.x;
-  const dy = pedal.y - hip.y;
+  const dx = ankle.x - hip.x;
+  const dy = ankle.y - hip.y;
   const d = Math.hypot(dx, dy);
-  if (d > femur + shank - 1e-6 || d < Math.abs(femur - shank) + 1e-6) {
+  if (d > femur + tibia - 1e-6 || d < Math.abs(femur - tibia) + 1e-6) {
     // Degenerate: clamp to fully extended on the line
     const t = Math.min(1, femur / Math.max(d, 1e-6));
     return {
@@ -39,7 +32,7 @@ function solveLegIK(
       reachable: false,
     };
   }
-  const a = (femur * femur - shank * shank + d * d) / (2 * d);
+  const a = (femur * femur - tibia * tibia + d * d) / (2 * d);
   const h = Math.sqrt(Math.max(0, femur * femur - a * a));
   const ux = dx / d;
   const uy = dy / d;
@@ -50,6 +43,25 @@ function solveLegIK(
   const kx = hip.x + ux * a + px * h * sign;
   const ky = hip.y + uy * a + py * h * sign;
   return { knee: { x: kx, y: ky }, reachable: true };
+}
+
+/**
+ * The foot is rigidly attached to the pedal at the cleat (ball of foot).
+ * For v1 we model the foot at a constant slight toe-down attitude in the
+ * world frame — a coarse approximation of average ankling. Varying this
+ * through the stroke would be a richer ankling model.
+ */
+const FOOT_TOE_DOWN_RAD = (8 * Math.PI) / 180;
+
+function ankleFromPedal(
+  pedal: { x: number; y: number },
+  footLen: number,
+): { x: number; y: number } {
+  // Ankle sits behind (-x) and above (+y) the pedal axle by the foot length.
+  return {
+    x: pedal.x - Math.cos(FOOT_TOE_DOWN_RAD) * footLen,
+    y: pedal.y + Math.sin(FOOT_TOE_DOWN_RAD) * footLen,
+  };
 }
 
 /** Interior angle at vertex `b` in triangle a-b-c (deg). */
@@ -82,39 +94,43 @@ export function computeFrame(cfg: Config, theta: number): Frame {
   // (no-pelvis) model treat the hip as the saddle position.
   const hip = { x: sx, y: sy };
 
-  // Pedal positions for both crank arms (right is the reference)
+  // Pedal positions for both crank arms (right is the reference).
+  // θ = 0 → TDC (pedal at +y); θ increases clockwise as viewed from the
+  // drive side, so the pedal sweeps TDC → forward → BDC → back → TDC,
+  // i.e. forward pedaling.
   const rightPedal = {
     x: crankCm * Math.sin(theta),
-    y: -crankCm * Math.cos(theta),
+    y: crankCm * Math.cos(theta),
   };
   const leftPedal = {
     x: crankCm * Math.sin(theta + Math.PI),
-    y: -crankCm * Math.cos(theta + Math.PI),
+    y: crankCm * Math.cos(theta + Math.PI),
   };
 
-  const shank = cfg.tibia + cfg.foot;
+  const rightAnkle = ankleFromPedal(rightPedal, cfg.foot);
+  const leftAnkle  = ankleFromPedal(leftPedal,  cfg.foot);
 
-  const rightIK = solveLegIK(hip, rightPedal, cfg.femur, shank, true);
-  const leftIK  = solveLegIK(hip, leftPedal,  cfg.femur, shank, true);
+  const rightIK = solveLegIK(hip, rightAnkle, cfg.femur, cfg.tibia, true);
+  const leftIK  = solveLegIK(hip, leftAnkle,  cfg.femur, cfg.tibia, true);
 
   const right: LegPose = {
     hip,
     knee: rightIK.knee,
-    ankle: rightPedal, // ankle≈pedal for the lumped shank+foot model
+    ankle: rightAnkle,
     pedal: rightPedal,
     hipAngle: 180 - interiorAngleDeg({ x: hip.x, y: hip.y - 10 }, hip, rightIK.knee),
-    kneeAngle: 180 - interiorAngleDeg(hip, rightIK.knee, rightPedal),
-    ankleAngle: 90,
+    kneeAngle: 180 - interiorAngleDeg(hip, rightIK.knee, rightAnkle),
+    ankleAngle: interiorAngleDeg(rightIK.knee, rightAnkle, rightPedal),
     reachable: rightIK.reachable,
   };
   const left: LegPose = {
     hip,
     knee: leftIK.knee,
-    ankle: leftPedal,
+    ankle: leftAnkle,
     pedal: leftPedal,
     hipAngle: 180 - interiorAngleDeg({ x: hip.x, y: hip.y - 10 }, hip, leftIK.knee),
-    kneeAngle: 180 - interiorAngleDeg(hip, leftIK.knee, leftPedal),
-    ankleAngle: 90,
+    kneeAngle: 180 - interiorAngleDeg(hip, leftIK.knee, leftAnkle),
+    ankleAngle: interiorAngleDeg(leftIK.knee, leftAnkle, leftPedal),
     reachable: leftIK.reachable,
   };
 
@@ -190,16 +206,20 @@ function gradeResistanceWatts(speedKmh: number, gradePct: number, massKg: number
 }
 
 export function evaluate(cfg: Config): Metrics {
-  const shank = cfg.tibia + cfg.foot;
-  const maxLeg = cfg.femur + shank;
-  // Required reach at BDC = saddle height to BB minus crank length, plus setback
+  // The two-link IK extends from hip to ankle (femur + tibia). The foot
+  // is a rigid segment from ankle to pedal — it doesn't extend reach in
+  // the IK sense, it shifts the ankle target.
+  const maxIK = cfg.femur + cfg.tibia;
   const crankCm = cfg.crankLength / 10;
-  // At BDC the pedal is directly below the BB → distance from hip to pedal
   const hipY = cfg.saddleHeight;
   const hipX = -cfg.saddleSetback;
-  const pedalY = -crankCm;
-  const reach = Math.hypot(hipX - 0, hipY - pedalY);
-  const geometryImpossible = reach > maxLeg - 0.5;
+  // At BDC the pedal is directly below the BB; ankle is offset by the foot.
+  const pedalBDC = { x: 0, y: -crankCm };
+  const ankleBDC = ankleFromPedal(pedalBDC, cfg.foot);
+  const reach = Math.hypot(hipX - ankleBDC.x, hipY - ankleBDC.y);
+  const geometryImpossible = reach > maxIK - 0.5;
+  // Total leg envelope (informational, drives the reach circle in the UI).
+  const maxLeg = cfg.femur + cfg.tibia + cfg.foot;
 
   // Knee flexion at BDC (compute from IK)
   const frameBDC = computeFrame(cfg, Math.PI); // θ=π → pedal at BDC for right
@@ -245,7 +265,7 @@ export function evaluate(cfg: Config): Metrics {
     optimumCadence,
     geometryImpossible,
     impossibleReason: geometryImpossible
-      ? `Need ${reach.toFixed(1)} cm of reach but leg can extend only ${maxLeg.toFixed(1)} cm.`
+      ? `Hip-to-ankle reach of ${reach.toFixed(1)} cm exceeds femur+tibia of ${maxIK.toFixed(1)} cm.`
       : undefined,
     jointShare: { hip: hipPct, knee: kneePct, ankle: anklePct },
     reach,
