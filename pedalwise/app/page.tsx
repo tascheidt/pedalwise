@@ -27,24 +27,26 @@ import { SectionLabel } from "@/components/SectionLabel";
 
 const STORAGE_KEY = "pedalwise.viewMode";
 
-function readStoredMode(): ViewMode {
-  if (typeof window === "undefined") return "anatomical";
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  return saved === "anatomical" || saved === "realistic" || saved === "diagnostic"
-    ? saved
-    : "anatomical";
-}
-
 export default function Page() {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [preset, setPreset] = useState<Preset>("5'9\"");
-  const [mode, setMode] = useState<ViewMode>(readStoredMode);
+  // SSR renders the default; localStorage is read after mount to avoid
+  // hydration mismatches when the user's saved mode differs from the default.
+  const [mode, setMode] = useState<ViewMode>("anatomical");
   const [speed, setSpeed] = useState(1);
   const [crankAngle, setCrankAngle] = useState(Math.PI / 4);
   const [scrub, setScrub] = useState<number | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, mode);
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === "anatomical" || saved === "realistic" || saved === "diagnostic") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMode(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, mode);
   }, [mode]);
 
   const { state: optState, run: runOptimize, clear: clearOpt } = useOptimizer();
