@@ -6,6 +6,7 @@ import type { Config, Preset, ViewMode } from "@/lib/types";
 import { DEFAULT_CONFIG, PRESETS } from "@/lib/presets";
 import { evaluate } from "@/lib/kinematics";
 import { useOptimizer } from "@/lib/useOptimizer";
+import type { Workspace } from "@/lib/storage";
 
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { Simulator } from "@/components/Simulator";
@@ -24,15 +25,27 @@ import { DiagnosticSidePanel } from "@/components/DiagnosticPanels";
 import { SpeedCadenceGearTriangle } from "@/components/SpeedCadenceGearTriangle";
 import { Badge } from "@/components/Badge";
 import { SectionLabel } from "@/components/SectionLabel";
+import { PersonaSwitcher } from "@/components/workspace/PersonaSwitcher";
 
 const STORAGE_KEY = "pedalwise.viewMode";
 
-export default function Page() {
+export type SimulatorWorkspaceProps = {
+  persona: Workspace;
+  /**
+   * Initial view mode when LocalStorage has no saved preference. Engineer
+   * workspace defaults to "diagnostic" (force decomposition, polar IE) per
+   * PW-104 — that audience lives in this view. If the user has a saved
+   * preference it still wins.
+   */
+  defaultViewMode?: ViewMode;
+};
+
+export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: SimulatorWorkspaceProps) {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [preset, setPreset] = useState<Preset>("5'9\"");
   // SSR renders the default; localStorage is read after mount to avoid
   // hydration mismatches when the user's saved mode differs from the default.
-  const [mode, setMode] = useState<ViewMode>("anatomical");
+  const [mode, setMode] = useState<ViewMode>(defaultViewMode);
   const [speed, setSpeed] = useState(1);
   const [crankAngle, setCrankAngle] = useState(Math.PI / 4);
   const [scrub, setScrub] = useState<number | null>(null);
@@ -114,7 +127,7 @@ export default function Page() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--color-bg-app)" }}>
-      <Header mode={mode} onModeChange={setMode} />
+      <Header persona={persona} mode={mode} onModeChange={setMode} />
 
       {mode === "diagnostic" ? (
         <DiagnosticLayout
@@ -163,15 +176,26 @@ export default function Page() {
 /*  Header                                                            */
 /* ------------------------------------------------------------------ */
 
-function Header({ mode, onModeChange }: { mode: ViewMode; onModeChange: (m: ViewMode) => void }) {
+function Header({
+  persona,
+  mode,
+  onModeChange,
+}: {
+  persona: Workspace;
+  mode: ViewMode;
+  onModeChange: (m: ViewMode) => void;
+}) {
   return (
     <header
       className="flex items-center justify-between px-6 py-3"
       style={{ borderBottom: "1px solid var(--color-border-default)", background: "var(--color-bg-surface)" }}
     >
-      <div className="flex items-baseline gap-2">
-        <div style={{ fontSize: 18, fontWeight: 500 }}>Pedalwise</div>
-        <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sagittal biomechanics</div>
+      <div className="flex items-center gap-3">
+        <PersonaSwitcher persona={persona} />
+        <div className="flex items-baseline gap-2">
+          <div style={{ fontSize: 18, fontWeight: 500 }}>Pedalwise</div>
+          <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Bike-fit simulator</div>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <ViewModeToggle value={mode} onChange={onModeChange} />
@@ -233,14 +257,30 @@ function AnatomicalLayout(p: AnatomicalProps) {
 
         {/* Center column */}
         <div className="flex flex-col gap-3">
+          {/* PW-105: HUD lifted out of the simulator card into a dedicated
+              band above. Larger numerics (28 px) and a vertical divider
+              between drivetrain (speed · cadence · power · η) and
+              biomechanics (knee · IE) read at a glance from across the
+              studio. */}
+          <div
+            className="rounded-[10px] px-4 py-3"
+            style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-default)" }}
+            data-testid="hud-band"
+          >
+            <HudStrip metrics={p.metrics} />
+          </div>
+
           <div
             className="rounded-[10px] p-4 flex flex-col gap-2"
             style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-default)" }}
           >
             <div className="flex items-baseline justify-between">
-              <SectionLabel>Sagittal view · drive side</SectionLabel>
+              {/* CP-022: "Sagittal view · drive side" → "Sagittal · drive side" */}
+              <SectionLabel>Sagittal · drive side</SectionLabel>
               <div className="mono" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
-                Endurance · {p.config.targetSpeed.toFixed(0)} km/h · {goalLabel}
+                {/* CP-021: discipline replaces hard-coded "Endurance"; "Road" fallback
+                    for legacy share URLs that predate the discipline field. */}
+                {(p.config.discipline ?? "Road")} · {p.config.targetSpeed.toFixed(0)} km/h · {goalLabel}
               </div>
             </div>
 
@@ -252,9 +292,8 @@ function AnatomicalLayout(p: AnatomicalProps) {
               scrubAngle={p.scrub}
             />
 
-            {/* HUD strip */}
-            <div className="flex items-center justify-between mt-2">
-              <HudStrip metrics={p.metrics} />
+            {/* Playback controls (HUD lifted to band above — PW-105). */}
+            <div className="flex items-center justify-end mt-2">
               <div className="flex items-center gap-3">
                 <SpeedControl value={p.speed} onChange={p.setSpeed} />
                 <input
@@ -266,12 +305,14 @@ function AnatomicalLayout(p: AnatomicalProps) {
                   onChange={(e) => p.setScrub(parseFloat(e.target.value))}
                   style={{ width: 120 }}
                   aria-label="Crank angle scrubber"
+                  data-testid="crank-scrubber"
                 />
                 <button
                   type="button"
                   onClick={() => p.setScrub(null)}
                   className="mono cursor-pointer"
                   style={{ fontSize: 11, color: "var(--color-text-secondary)" }}
+                  data-testid="run-button"
                 >
                   ▶ run
                 </button>
@@ -281,14 +322,16 @@ function AnatomicalLayout(p: AnatomicalProps) {
 
           <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
             <KneeFlexionChart config={p.config} crankAngle={p.crankAngle} />
-            <CrankTorqueChart />
+            <CrankTorqueChart config={p.config} metrics={p.metrics} />
             <EfficiencyCadenceChart config={p.config} />
           </div>
 
           {p.metrics.geometryImpossible && (
             <div className="rounded-[10px] p-4"
                  style={{ background: "var(--color-danger-bg)", border: "1px solid var(--color-danger)", color: "var(--color-danger)" }}>
-              <strong>Geometry impossible.</strong> {p.metrics.impossibleReason} Lower the saddle, lengthen leg segments, or shorten the crank.
+              {/* CP-060: directive-first error copy with the most-common fix
+                  named first and a fallback. En-dashes in ranges per §5. */}
+              <strong>Geometry impossible</strong> · {p.metrics.impossibleReason}. Lower the saddle 1–2 cm (most common fix), or shorten the crank to 165–170 mm.
             </div>
           )}
         </div>
@@ -368,8 +411,9 @@ function RealisticLayout({ config, ghostConfig }: { config: Config; ghostConfig:
       <div className="rounded-[10px] p-6 flex flex-col gap-3"
            style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-default)" }}>
         <div className="flex items-baseline justify-between">
-          <SectionLabel>Realistic mode · marketing capture</SectionLabel>
-          <Badge tone="success">Active</Badge>
+          {/* CP-003: relabel; Active badge removed — the mode toggle already
+              shows the active state. */}
+          <SectionLabel>Realistic · presentation view</SectionLabel>
         </div>
         <Simulator
           config={config}
@@ -438,8 +482,9 @@ function DiagnosticLayout({
         <div className="rounded-[10px] p-4 flex flex-col gap-3"
              style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-default)" }}>
           <div className="flex items-baseline justify-between">
+            {/* Coach-mode badge removed — the mode toggle already labels the
+                view as Diagnostic. */}
             <SectionLabel>Sagittal · force decomposition</SectionLabel>
-            <Badge tone="info">Coach mode</Badge>
           </div>
           <Simulator
             config={config}
@@ -448,6 +493,7 @@ function DiagnosticLayout({
             angularVel={(config.cadence * 2 * Math.PI) / 60 * speed}
             scrubAngle={scrub}
             aspect={1.4}
+            metrics={metrics}
           />
           <div className="flex items-center justify-between">
             <div className="mono flex gap-4" style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
@@ -474,9 +520,7 @@ function DiagnosticLayout({
         </div>
 
         <DiagnosticSidePanel
-          ie={metrics.ie}
           crankAngle={angle}
-          share={metrics.jointShare}
           metrics={metrics}
         />
       </div>
@@ -525,7 +569,7 @@ function SpeedCadenceGearSection({ config }: { config: Config }) {
 function Footer() {
   return (
     <footer className="text-center" style={{ padding: "0 0 24px", fontSize: 11, color: "var(--color-text-tertiary)" }}>
-      Pedalwise · v1.0 · sagittal biomechanics simulator
+      Pedalwise · v1.1 · sagittal-plane bike-fit simulator
     </footer>
   );
 }

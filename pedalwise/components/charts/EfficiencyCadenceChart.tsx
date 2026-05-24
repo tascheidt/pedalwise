@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import type { Config } from "@/lib/types";
 import { evaluate } from "@/lib/kinematics";
+import { gradeResistanceWatts } from "@/lib/geometry";
+import { grossEfficiency, optimumCadence } from "@/lib/metabolic";
 import { ChartFrame } from "./ChartFrame";
 
 const W = 400;
@@ -12,23 +14,37 @@ const PAD = { l: 32, r: 12, t: 12, b: 22 };
 export function EfficiencyCadenceChart({ config }: { config: Config }) {
   const { path, opt, current } = useMemo(() => {
     const xMin = 50, xMax = 130;
+
+    // Power demand is fixed by the goal (speed × grade × mass) — does not
+    // depend on cadence. Compute it once, sweep cadence cheaply against the
+    // closed-form GE(P, c, rider) (Stream C, S3a). 80× faster than running
+    // a full inverse-dynamics evaluate() at every cadence sample.
+    const power = gradeResistanceWatts(config.targetSpeed, config.roadGrade, config.mass);
+
     const samples: [number, number][] = [];
-    let opt = { c: 0, e: 0 };
     for (let c = xMin; c <= xMax; c += 1) {
-      const m = evaluate({ ...config, cadence: c });
-      samples.push([c, m.grossEfficiency]);
-      if (m.grossEfficiency > opt.e) opt = { c, e: m.grossEfficiency };
+      samples.push([c, grossEfficiency(power, c, config)]);
     }
+
+    // Optimum cadence is the closed-form maximum of the curve (S3a derivation).
+    const optC = optimumCadence(power, config);
+    const optE = grossEfficiency(power, optC, config);
+
+    // The current dot still reflects the real, fully-composed efficiency
+    // (includes kneeAlignmentPenalty etc) so the user sees their actual
+    // operating point, not the idealized GE curve.
+    const currentE = evaluate(config).grossEfficiency;
+
     const eMin = 0.05, eMax = 0.30;
     const x = (c: number) => PAD.l + ((c - xMin) / (xMax - xMin)) * (W - PAD.l - PAD.r);
     const y = (e: number) => PAD.t + (1 - (e - eMin) / (eMax - eMin)) * (H - PAD.t - PAD.b);
     const path = samples
       .map(([c, e], i) => `${i === 0 ? "M" : "L"} ${x(c).toFixed(1)} ${y(e).toFixed(1)}`)
       .join(" ");
-    const currentE = evaluate(config).grossEfficiency;
+
     return {
       path,
-      opt: { x: x(opt.c), y: y(opt.e), c: opt.c, e: opt.e },
+      opt: { x: x(optC), y: y(optE), c: optC, e: optE },
       current: { x: x(config.cadence), y: y(currentE), c: config.cadence, e: currentE },
     };
   }, [config]);

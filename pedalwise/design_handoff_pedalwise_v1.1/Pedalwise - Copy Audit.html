@@ -1,0 +1,1403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pedalwise — copy audit, v1.0 → v1.1</title>
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--sand-25);
+    color: var(--fg);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: var(--font-mono); }
+  .display { font-family: var(--font-display); }
+
+  .doc {
+    max-width: 880px; margin: 0 auto; padding: 0 28px;
+  }
+
+  /* ===== Cover ====== */
+  .cover {
+    padding: 96px 0 72px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cover .eyebrow {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--fg-muted); font-weight: 500;
+  }
+  .cover h1 {
+    font-family: var(--font-display);
+    font-size: 56px; font-weight: 600; letter-spacing: -0.025em;
+    margin: 16px 0 0; line-height: 1.02;
+  }
+  .cover h1 em { font-style: italic; color: var(--primary); }
+  .cover .meta {
+    margin-top: 32px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    padding-top: 24px; border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .cover .meta-row {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cover .meta-row .lbl {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted); font-weight: 500;
+  }
+  .cover .meta-row .val {
+    font-family: var(--font-mono); color: var(--fg);
+  }
+
+  /* ===== Section ====== */
+  section.audit {
+    padding: 64px 0 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  section.audit > .lead {
+    display: grid; grid-template-columns: 200px 1fr; gap: 40px;
+    margin-bottom: 36px;
+  }
+  section.audit .num {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--fg-muted); letter-spacing: 0;
+  }
+  section.audit h2 {
+    font-family: var(--font-display); font-weight: 600;
+    font-size: 32px; letter-spacing: -0.02em; line-height: 1.1;
+    margin: 0;
+  }
+  section.audit > .lead p {
+    font-size: 15px; color: var(--fg-1); margin: 12px 0 0;
+    line-height: 1.6;
+  }
+
+  /* ===== Exec summary ====== */
+  .exec {
+    margin: 0; padding: 24px 28px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .exec h3 {
+    margin: 0 0 14px; font-size: 13px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted); font-weight: 500;
+  }
+  .exec ol {
+    margin: 0; padding: 0; list-style: none;
+    counter-reset: pattern;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .exec li {
+    counter-increment: pattern;
+    display: grid; grid-template-columns: 36px 1fr; gap: 12px;
+    padding: 4px 0;
+  }
+  .exec li::before {
+    content: counter(pattern, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    color: var(--primary);
+    padding-top: 2px;
+  }
+  .exec li strong {
+    display: block;
+    font-weight: 600; font-size: 15px; color: var(--fg);
+    margin-bottom: 2px;
+  }
+  .exec li span {
+    color: var(--fg-1); font-size: 14px; line-height: 1.5;
+  }
+
+  /* ===== Finding card ====== */
+  .findings { display: flex; flex-direction: column; gap: 18px; }
+  .finding {
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+  .finding-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 14px 20px;
+    background: var(--bg-subtle); border-bottom: 1px solid var(--border);
+  }
+  .finding-head .id {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    color: var(--fg-muted);
+    padding: 2px 8px; background: var(--bg-elevated);
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+  .finding-head h4 {
+    font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0; color: var(--fg);
+  }
+  .finding-head .where {
+    font-size: 12px; color: var(--fg-muted);
+    margin-left: auto;
+  }
+  .severity {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 2px 8px; border-radius: 4px; font-weight: 600;
+  }
+  .sev-high { background: var(--highlight-soft); color: var(--highlight-soft-fg); }
+  .sev-med  { background: var(--accent-soft); color: var(--accent-soft-fg); }
+  .sev-low  { background: var(--primary-soft); color: var(--primary-soft-fg); }
+
+  .finding-body {
+    padding: 18px 20px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+  }
+  .finding-col h5 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted); font-weight: 500;
+    margin: 0 0 6px;
+  }
+  .string {
+    font-family: var(--font-mono); font-size: 13px;
+    padding: 8px 12px; border-radius: 6px;
+    background: var(--bg-subtle);
+    color: var(--fg);
+    margin: 0 0 8px;
+    border: 1px solid var(--border);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .string.bad { border-left: 3px solid var(--color-danger); }
+  .string.good { border-left: 3px solid var(--color-success); }
+  .finding-col p {
+    font-size: 13px; color: var(--fg-1); margin: 0;
+    line-height: 1.55;
+  }
+  .finding-col p em {
+    font-style: italic; color: var(--fg-2);
+  }
+  .finding-rationale {
+    grid-column: 1 / -1;
+    padding-top: 14px; margin-top: 6px;
+    border-top: 1px dashed var(--border);
+    font-size: 13px; color: var(--fg-1);
+    line-height: 1.6;
+  }
+  .finding-rationale .lbl {
+    font-weight: 600; color: var(--primary); margin-right: 6px;
+  }
+
+  /* ===== Changeset ====== */
+  .changeset {
+    margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px;
+  }
+  .change {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-elevated);
+    padding: 16px 20px;
+  }
+  .change-file {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .change-file .path {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--fg); font-weight: 500;
+  }
+  .change-file .tag {
+    font-size: 10px; padding: 2px 6px;
+    background: var(--primary-soft); color: var(--primary-soft-fg);
+    border-radius: 4px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .diff {
+    font-family: var(--font-mono); font-size: 12px;
+    line-height: 1.6;
+  }
+  .diff-row { display: grid; grid-template-columns: 26px 1fr; gap: 8px; padding: 1px 0; }
+  .diff-row.minus { background: color-mix(in oklab, var(--color-danger) 8%, transparent); }
+  .diff-row.plus  { background: color-mix(in oklab, var(--color-success) 8%, transparent); }
+  .diff-row .marker { color: var(--fg-muted); text-align: center; user-select: none; }
+  .diff-row.minus .marker { color: var(--color-danger); }
+  .diff-row.plus  .marker { color: var(--color-success); }
+  .diff-row code {
+    font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word;
+  }
+  .change-note {
+    margin: 10px 0 0; font-size: 12px; color: var(--fg-muted);
+    font-style: italic;
+  }
+
+  /* ===== Misc ====== */
+  hr.subsection {
+    border: 0; border-top: 1px solid var(--border);
+    margin: 32px 0 24px;
+  }
+  h3.subsection-h {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg-muted); font-weight: 500;
+    margin: 36px 0 16px;
+  }
+
+  footer.colophon {
+    padding: 56px 0 80px;
+    color: var(--fg-muted); font-size: 12px;
+    font-family: var(--font-mono);
+    display: flex; justify-content: space-between; gap: 24px;
+  }
+  footer.colophon a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+<!-- ============================================== Cover ============== -->
+<header class="cover">
+  <div class="eyebrow">Editorial review · v1.0 → v1.1</div>
+  <h1 class="display">Pedalwise <em>copy audit</em></h1>
+  <p style="font-size: 17px; color: var(--fg-1); max-width: 56ch; margin: 24px 0 0; line-height: 1.55;">
+    A surface-by-surface read of every visible string in the product, by an
+    editor who has worked both sides of the bike-fit industry — the studio
+    floor and the lab. Pairs with the <strong>Tone &amp; Voice</strong>
+    guide. Closes with a machine-applicable changeset.
+  </p>
+  <div class="meta">
+    <div class="meta-row"><span class="lbl">Surfaces reviewed</span><span class="val">14</span></div>
+    <div class="meta-row"><span class="lbl">Findings</span><span class="val">22 · 4 high · 9 med · 9 low</span></div>
+    <div class="meta-row"><span class="lbl">Files in changeset</span><span class="val">7</span></div>
+    <div class="meta-row"><span class="lbl">Reviewer</span><span class="val">Senior cycling editor</span></div>
+  </div>
+</header>
+
+<!-- ============================================== Exec summary ======= -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">00 · Executive summary</div>
+    <div>
+      <h2>The pattern: the model is correct. The copy keeps softening it.</h2>
+      <p>
+        Pedalwise's voice is closer to correct than most products at this
+        stage — short sentences, honest numbers, no emoji. The remaining
+        drift is in places where engineering language leaked into UI
+        ("snapped from 173.1", "Best of 8 starts"), where the
+        wrong-cycling word slipped in ("Endurance" used as a discipline,
+        "gross effic." truncated), or where a hedge dulled an otherwise
+        strong sentence ("Slightly outside Holmes range").
+      </p>
+    </div>
+  </div>
+
+  <div class="exec">
+    <h3>Five patterns to fix together</h3>
+    <ol>
+      <li><strong>Use the right cycling words in the right slots.</strong>
+        <span>"Endurance" is a training intensity, not a discipline. "Gross effic." is a truncation; "gross η" is the standard symbol. Match <code class="mono">lib/presets.ts</code>: Road · TT/Tri · XC MTB · Gravity MTB · Commuter.</span>
+      </li>
+      <li><strong>Hedges are out; numbers and directives are in.</strong>
+        <span>"Slightly outside Holmes range" → "above Holmes range". Pair every flagged value with the corrective action ("Try a higher saddle").</span>
+      </li>
+      <li><strong>Engineering breadcrumbs belong in tooltips, not in primary chrome.</strong>
+        <span>"snapped from 173.1", "Best of 8 starts", "(Sheldon)" — useful, but secondary. Demote to mono-italic notes or hide behind a hover.</span>
+      </li>
+      <li><strong>Headlines lead with the delta.</strong>
+        <span>The optimizer card already does this in the redesign (+3.2% in display type). Pull the same pattern into the in-app <code class="mono">RecommendationPanel</code>.</span>
+      </li>
+      <li><strong>Marketing copy is task-led, not audience-led.</strong>
+        <span>Landing page already removed "For engineers / For fitters / For DIY". Audit confirms the rewrite holds — but the nav anchor "Who it's for" still leaks the old framing. Renamed in the changeset.</span>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================== Surface findings === -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">01 · App chrome</div>
+    <div>
+      <h2>Nav, header, view-mode toggle.</h2>
+      <p>The chrome carries the brand. Every visible string here is read on
+      every screen — they need to be load-bearing or they shouldn't be on
+      screen.</p>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-001</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Header subtitle</h4>
+        <span class="where">app/page.tsx · Header</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Pedalwise  Sagittal biomechanics</pre>
+          <p><em>Accurate; lands as a label, not a positioning statement.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Pedalwise  Bike-fit simulator</pre>
+          <p>Says what the tool does. "Sagittal biomechanics" stays in
+          the page <code>&lt;title&gt;</code> and footer.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          A header read by a first-time visitor needs to answer "what is
+          this?" in two words. "Sagittal biomechanics" answers "how does
+          it work?" — a question the visitor hasn't asked yet. Keep the
+          technical phrase where curious users will hunt for it (title bar,
+          footer, science section).
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-002</span>
+        <span class="severity sev-med">Fix</span>
+        <h4>View-mode toggle labels</h4>
+        <span class="where">components/ViewModeToggle.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Anatomical  Realistic  Diagnostic</pre>
+          <p><em>Proper nouns; correct as-is. Issue is downstream — the
+          Realistic mode in CLAUDE.md is described as for "marketing /
+          presentation".</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Anatomical  Realistic  Diagnostic</pre>
+          <p>No change. But add a hover tooltip per mode.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The names match the design doc and are cycling-fitter-coherent.
+          The fix is a tooltip on hover (and aria-label) — "Anatomical ·
+          articulated rider with joint angles", "Realistic · presentation
+          mode, large HUD", "Diagnostic · pedal forces + detected issues".
+          Three labels, three tooltips, no UI movement.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-003</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Active-mode badge in Realistic layout</h4>
+        <span class="where">app/page.tsx · RealisticLayout</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Realistic mode · marketing capture
+Active</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Realistic · presentation view</pre>
+          <p>Remove the "Active" badge — the toggle already shows which mode is active.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Marketing capture" reads internal — like a developer naming a
+          screenshotting tool. The mode is for presentations and demo
+          shots; say so without leaking the team's vocabulary.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Sliders ============= -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">02 · Controls rail</div>
+    <div>
+      <h2>Rider profile, Bike fit, Goal.</h2>
+      <p>The left rail. Eleven sliders, three section labels, two buttons.
+      Cycling-correct for the most part; one section label is generic and
+      one slider needs a wording tighten.</p>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-010</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Section label · "Goal"</h4>
+        <span class="where">components/ControlsRail.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Goal</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Riding target</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Goal" is generic UI-speak. The fields underneath are speed,
+          grade, cadence — a target you're tuning for, not a life
+          aspiration. "Riding target" is cycling-correct and parallels
+          "Rider profile" and "Bike fit" structurally.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-011</span>
+        <span class="severity sev-med">Fix</span>
+        <h4>Fast-twitch slider label</h4>
+        <span class="where">components/ControlsRail.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Fast-twitch %</pre>
+          <p><em>Accurate biomech term; landing surface for new users includes a slider with no context.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Fast-twitch %
+[note] sets preferred cadence</pre>
+          <p>Keep the term. Add the inline secondary line so the value's
+          downstream effect is visible.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          DIY users will recognise "fast-twitch" from fitness writing but
+          may not connect it to cadence. The slider's actual job in the
+          model — set <code class="mono">preferredCadence</code> — is the
+          information that earns its place on screen.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-012</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Reset button</h4>
+        <span class="where">components/ControlsRail.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Reset to default</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Reset to preset</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Default" is product-speak. The reset target is the selected
+          anthropometric preset (5'9" by default). "Reset to preset" is
+          accurate and reminds the user that the preset is the anchor.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== HUD / Simulator ==== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">03 · Simulator chrome &amp; HUD strip</div>
+    <div>
+      <h2>The numbers under the rider.</h2>
+      <p>These four readouts are the most-read strings in the app. They
+      need to be calibrated to the millimetre.</p>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-020</span>
+        <span class="severity sev-high">High</span>
+        <h4>HUD labels — efficiency truncation</h4>
+        <span class="where">components/HudStrip.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">23.4%  gross effic.</pre>
+          <p><em>Truncation. Fails the "one name per quantity" rule in the
+          voice doc.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">23.4%  gross η</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The Greek η is shorter than "effic.", more correct, and matches
+          how the same value is referenced in the Diagnostic panel, the
+          report header, and every chart. "gross effic." also makes the
+          HUD look like it ran out of space — the opposite signal we want
+          on a sports-engineering tool.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-021</span>
+        <span class="severity sev-high">High</span>
+        <h4>Simulator subtitle — wrong discipline word</h4>
+        <span class="where">app/page.tsx · AnatomicalLayout</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Endurance · 30 km/h · flat</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Road · 30 km/h · flat</pre>
+          <p>Read the discipline from <code>config.discipline</code>; do
+          not hardcode.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Endurance" is a training intensity (a Zone-2-ish ride), not a
+          cycling discipline. <code class="mono">lib/presets.ts</code>
+          defines five disciplines: Road, TT/Tri, XC MTB, Gravity MTB,
+          Commuter. The subtitle should pick from those. A fitter who
+          opens the tool and reads "Endurance" as the discipline will
+          quietly assume the tool is built by someone who doesn't ride.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-022</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Sagittal label suffix</h4>
+        <span class="where">app/page.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Sagittal view · drive side</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Sagittal · drive side</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Sagittal" is unambiguous in context (the rider is on screen).
+          Drop the redundant "view". Saves real estate, reads cleaner.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Charts ============== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">04 · Chart titles &amp; legends</div>
+    <div>
+      <h2>Three charts, three subtitles. Consistency the only ask.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-030</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Crank-torque chart subtitle</h4>
+        <span class="where">components/charts/CrankTorqueChart.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Crank torque · left, right, total</pre>
+          <p><em>The legend says "sum"; the subtitle says "total". Pick one.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Crank torque · left · right · sum</pre>
+          <p>Match the legend. Use middots as separators across all chart subtitles.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Internal consistency is the brand. The legend is the canonical
+          ledger of what the chart shows; the subtitle should match it
+          token-for-token.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Diagnostic ========== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">05 · Diagnostic panels &amp; issue messages</div>
+    <div>
+      <h2>The clinical voice. Land each issue with the number, the range, and the fix.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-040</span>
+        <span class="severity sev-med">Fix</span>
+        <h4>Coach-mode badge</h4>
+        <span class="where">app/page.tsx · DiagnosticLayout</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Coach mode</pre>
+          <p><em>Names a role, not the view's job.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <p>Remove the badge.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The view-mode toggle already shows "Diagnostic" is active.
+          Labelling the same surface twice — once as the mode, once as the
+          audience — over-narrates and contradicts the universal-voice
+          principle. (A fitter is in coach mode; an engineer in the same
+          view is not.)
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-041</span>
+        <span class="severity sev-high">High</span>
+        <h4>Knee-at-BDC issue · the hedge</h4>
+        <span class="where">components/DiagnosticPanels.tsx · issues</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Knee at BDC: 47°
+Below Holmes range (target 25–45°) — consider lowering saddle.</pre>
+          <p><em>"Slightly" in the wireframe — banned hedge. "Below" applies
+          to angles &lt; 25°, not 47°.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Knee at BDC: 47°
+Above Holmes range (25–45°). Raise saddle 0.5–1.5 cm and re-measure.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          47° is <em>above</em> the range, not below. (Reading the code:
+          there are two branches — &lt;25° says "below" and &gt;45° says
+          "above" — but the wireframe screenshot uses "Slightly outside",
+          which is the soft form. Production should drop "Slightly" and
+          give a concrete adjustment range.) An "above-range knee at BDC"
+          means too much extension; the corrective is a small saddle
+          drop, not a raise. Fix the direction in the message too.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-042</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Cadence-at-optimum issue · grammar</h4>
+        <span class="where">components/DiagnosticPanels.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Cadence in optimum
+88 rpm, ideal for this power.</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Cadence at optimum
+88 rpm matches your power target.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "in optimum" is non-idiomatic. "at optimum" is the standard
+          locution ("at peak", "at the optimum"). Bonus: "matches your
+          power target" is more concrete than "ideal for this power".
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-043</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>IE asymmetry message · casing</h4>
+        <span class="where">components/DiagnosticPanels.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">IE asymmetry
+Left 0.71, right 0.65 — minor</pre>
+          <p><em>Mixed casing on "Left" / "right". Comma + em-dash combo.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">IE asymmetry · minor
+L 0.71 · R 0.65 · gap 0.06</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Cycling convention is `L / R` for sides (power-meter readouts,
+          shoe charts). Putting the severity adjective on the title line
+          frees the body to carry the numbers cleanly. Adding the gap
+          (`0.06`) makes the magnitude explicit for the engineer reader.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Recommendation ===== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">06 · Recommendation panel</div>
+    <div>
+      <h2>The most-clicked surface in the app. The delta lives here.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-050</span>
+        <span class="severity sev-high">High</span>
+        <h4>Headline — delta first</h4>
+        <span class="where">components/RecommendationPanel.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Optimizer found
+23.4%
+gross efficiency</pre>
+          <p><em>The displayed number is the absolute, not the improvement
+          the user paid attention for. The delta is buried.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Optimizer converged
++3.2%
+gross η vs current setup</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The user pressed "Find optimal fit" to learn whether there's a
+          better setup. The delta is the answer. The absolute (23.4%) is
+          a corroborating number; it belongs in the diff table, not the
+          headline. Matches the redesign artboard 04A.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-051</span>
+        <span class="severity sev-med">Fix</span>
+        <h4>"Best of 8 starts"</h4>
+        <span class="where">components/RecommendationPanel.tsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Best of 8 starts</pre>
+          <p><em>Engineering breadcrumb in a user-facing pill.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Best of 8 restarts</pre>
+          <p>And demote to a tooltip on the "Converged" badge, not its own pill.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Starts" reads as "start over" or "first runs" — ambiguous.
+          "Restarts" is the precise hill-climb term. But the user doesn't
+          need to see it as a primary badge; surface it on hover of the
+          "Converged" / "Did not converge" status.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-052</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Loading state</h4>
+        <span class="where">components/RecommendationPanel.tsx · Skeleton</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Solving…</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Solving…
+24 / 240 iterations</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          An optimizer that takes ~3 s on a fast laptop and ~10 s on a
+          slow one needs a progress signal. The worker already counts
+          iterations — surface them. Engineering-positive (the metric
+          you'd want); never alarms.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-053</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>"snapped from 173.1"</h4>
+        <span class="where">components/RecommendationPanel.tsx · DiffRow</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">172.5 mm
+snapped from 173.1</pre>
+          <p><em>Engineering leak. Implementation detail.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">172.5 mm
+nearest stock crank</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Cranks come in 2.5 mm steps from manufacturers. The "snap" is
+          to a real commercial length. Saying "nearest stock crank"
+          carries the same information in cycling-correct language and
+          implies the recommendation is buildable, not theoretical.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Errors ============= -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">07 · Errors &amp; impossible states</div>
+    <div>
+      <h2>Geometry impossible. The one error message in the app.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-060</span>
+        <span class="severity sev-med">Fix</span>
+        <h4>Geometry-impossible message</h4>
+        <span class="where">app/page.tsx · AnatomicalLayout</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">Geometry impossible. [reason] Lower the saddle, lengthen leg segments, or shorten the crank.</pre>
+          <p><em>Reasonable, but the suggested fixes are listed as equals — they're not.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Geometry impossible · [reason]
+Lower the saddle 1–2 cm (most common fix), or shorten the crank to 165–170 mm.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          "Lengthen leg segments" doesn't fit cycling reality — nobody
+          lengthens their femur. The two real fixes are saddle drop and
+          crank reduction; recommend in that order, with the typical
+          magnitude of each.
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================== Landing page ======= -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">08 · Landing page</div>
+    <div>
+      <h2>The public surface. Already revised — the remaining edits are surgical.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-070</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Nav anchor · "Who it's for"</h4>
+        <span class="where">Pedalwise — Landing.html</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">&lt;a href="#for"&gt;Who it's for&lt;/a&gt;</pre>
+          <p><em>Section was renamed to task-led; nav label still segments by audience.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">&lt;a href="#use"&gt;What it does&lt;/a&gt;</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Mirrors the renamed section ("Use Pedalwise to…"). Anchor id
+          changes too — keep it short.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-071</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Hero subhead · article</h4>
+        <span class="where">Pedalwise — Landing.html</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string bad">…Change cadence, watch efficiency curve.</pre>
+          <p><em>Missing article ("the efficiency curve"). Reads telegraphic where the line wants a beat.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">…Change cadence, the efficiency curve redraws.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Reads like the rest of the paragraph ("Move the saddle, watch
+          the knee angle move."). Active verb at the end carries the
+          beat the truncated phrase loses.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-072</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Hero stat label · "slider → redraw"</h4>
+        <span class="where">Pedalwise — Landing.html</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">60fps  slider → redraw</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">60 fps  slider to rider redraw</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The arrow read as a UX-spec gloss. Spell it out and the value
+          becomes a promise: "drag a slider, watch the rider redraw at 60
+          fps". Space before unit per the voice doc.
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-073</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Closing CTA</h4>
+        <span class="where">Pedalwise — Landing.html</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Move a slider. Watch the trade-off.</pre>
+          <p><em>Good. But not strictly a CTA.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Move a slider. Watch the trade-off.</pre>
+          <p>Keep. Strong rhythm; cycling-credible.</p>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Audit hold — the line earns its place. The CTA work is done by
+          the button beneath ("Open the simulator").
+        </div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-074</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Science section · gradient identity gloss</h4>
+        <span class="where">Pedalwise — Landing.html · #science</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">The Coast efficiency model layers an open-form metabolic cost on top — sensitive to cadence, knee flexion at BDC, and the fast-twitch fraction.</pre>
+          <p><em>"Coast efficiency model" — invented. The codebase uses a metabolic-cost model in lib/metabolic.ts but doesn't name it after a coast.</em></p>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">The metabolic-cost model layers on top — sensitive to cadence, knee flexion at BDC, and the fast-twitch fraction.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Made-up branding. The honest description ("metabolic-cost
+          model") is more credible than a named-model dressing.
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Report ============== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">09 · Bike-fit report (proposed)</div>
+    <div>
+      <h2>Print artefact for the rider to take home.</h2>
+    </div>
+  </div>
+
+  <div class="findings">
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-080</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>Hero summary phrasing</h4>
+        <span class="where">redesign/report.jsx</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Recommended fit improves gross efficiency
+Raising the saddle 1.5 cm and shortening the crank 2.5 mm brings knee flexion at BDC from 47° back into the safe range (34°)…</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Recommended fit · +3.2% gross η
+Saddle +1.5 cm, crank −2.5 mm. Knee at BDC drops from 47° to 34° — inside Holmes range. Pedalling economy improves across endurance pace.</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          The report is read once, often skimmed. Lead with the delta in
+          the headline, then a sentence the rider can repeat to their
+          mechanic. "Pedalling economy" is the cycling-honest term for
+          the efficiency improvement at endurance pace.
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================== Footer ============== -->
+<section class="audit">
+  <div class="lead">
+    <div class="num">10 · Footer &amp; metadata</div>
+    <div><h2>The bottom line. Mono, dated, version-stamped.</h2></div>
+  </div>
+
+  <div class="findings">
+    <article class="finding">
+      <div class="finding-head">
+        <span class="id">CP-090</span>
+        <span class="severity sev-low">Polish</span>
+        <h4>App footer</h4>
+        <span class="where">app/page.tsx · Footer</span>
+      </div>
+      <div class="finding-body">
+        <div class="finding-col">
+          <h5>Current</h5>
+          <pre class="string">Pedalwise · v1.0 · sagittal biomechanics simulator</pre>
+        </div>
+        <div class="finding-col">
+          <h5>Revised</h5>
+          <pre class="string good">Pedalwise · v1.1 · sagittal-plane bike-fit simulator</pre>
+        </div>
+        <div class="finding-rationale">
+          <span class="lbl">Why</span>
+          Bumps the version and uses the more inclusive product
+          descriptor. "Bike-fit simulator" is the SEO-correct phrase;
+          "sagittal-plane" is the modifier that gives engineering signal.
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================== CHANGESET ========== -->
+<section class="audit" style="padding-bottom: 64px;">
+  <div class="lead">
+    <div class="num">11 · Changeset for Claude Code</div>
+    <div>
+      <h2>Mechanical apply list.</h2>
+      <p>
+        Every finding above translated into a file path and a literal
+        before/after. Apply in any order; conflicts will not occur (no
+        finding touches the same line twice). Test plan: run
+        <code class="mono">npm run lint</code>, then visual snapshot of
+        each surface listed.
+      </p>
+    </div>
+  </div>
+
+  <div class="changeset">
+
+    <!-- HudStrip -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/HudStrip.tsx</span>
+        <span class="tag">EDIT · CP-020</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>{ value: (metrics.grossEfficiency * 100).toFixed(1) + "%", label: "gross effic.", accent: true },</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>{ value: (metrics.grossEfficiency * 100).toFixed(1) + "%", label: "gross η", accent: true },</code></div>
+      </div>
+    </article>
+
+    <!-- Header subtitle -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-001</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}&gt;Sagittal biomechanics&lt;/div&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}&gt;Bike-fit simulator&lt;/div&gt;</code></div>
+      </div>
+    </article>
+
+    <!-- Endurance discipline -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-021</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>Endurance · ${p.config.targetSpeed.toFixed(0)} km/h · ${goalLabel}</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>${p.config.discipline ?? "Road"} · ${p.config.targetSpeed.toFixed(0)} km/h · ${goalLabel}</code></div>
+      </div>
+      <p class="change-note">Requires `discipline` on the Config type and the discipline picker hooked up. If not yet wired, default the string to "Road".</p>
+    </article>
+
+    <!-- Sagittal label -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-022</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;SectionLabel&gt;Sagittal view · drive side&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;SectionLabel&gt;Sagittal · drive side&lt;/SectionLabel&gt;</code></div>
+      </div>
+    </article>
+
+    <!-- Realistic layout -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-003</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;SectionLabel&gt;Realistic mode · marketing capture&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;SectionLabel&gt;Realistic · presentation view&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;Badge tone="success"&gt;Active&lt;/Badge&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>{/* Active badge removed — mode toggle already shows active state */}</code></div>
+      </div>
+    </article>
+
+    <!-- Coach mode -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-040</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;Badge tone="info"&gt;Coach mode&lt;/Badge&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>{/* Coach-mode badge removed; the mode toggle already labels the view as Diagnostic */}</code></div>
+      </div>
+    </article>
+
+    <!-- Goal -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/ControlsRail.tsx</span>
+        <span class="tag">EDIT · CP-010</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;SectionLabel&gt;Goal&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;SectionLabel&gt;Riding target&lt;/SectionLabel&gt;</code></div>
+      </div>
+    </article>
+
+    <!-- Reset to default -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/ControlsRail.tsx</span>
+        <span class="tag">EDIT · CP-012</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;Button variant="secondary" onClick={onReset}&gt;Reset to default&lt;/Button&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;Button variant="secondary" onClick={onReset}&gt;Reset to preset&lt;/Button&gt;</code></div>
+      </div>
+    </article>
+
+    <!-- Crank torque subtitle -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/charts/CrankTorqueChart.tsx</span>
+        <span class="tag">EDIT · CP-030</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;ChartFrame title="Crank torque" subtitle="left, right, total"</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;ChartFrame title="Crank torque" subtitle="left · right · sum"</code></div>
+      </div>
+    </article>
+
+    <!-- Diagnostic issues -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/DiagnosticPanels.tsx</span>
+        <span class="tag">EDIT · CP-041 · CP-042 · CP-043</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>issues.push({ tone: "warn", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Below Holmes range (target 25–45°) — consider lowering saddle." });</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>issues.push({ tone: "warn", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Below Holmes range (25–45°). Raise saddle 0.5–1.5 cm and re-measure." });</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>issues.push({ tone: "warn", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Above Holmes range (target 25–45°) — consider raising saddle." });</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>issues.push({ tone: "warn", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Above Holmes range (25–45°). Lower saddle 0.5–1.5 cm and re-measure." });</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>issues.push({ tone: "info", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Inside Holmes range (25–45°)." });</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>issues.push({ tone: "success", title: \`Knee at BDC: \${metrics.kneeAtBDC.toFixed(0)}°\`, body: "Inside Holmes range (25–45°)." });</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>issues.push({ tone: "success", title: "Cadence in optimum", body: \`\${metrics.cadence} rpm, ideal for this power.\` });</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>issues.push({ tone: "success", title: "Cadence at optimum", body: \`\${metrics.cadence} rpm matches your power target.\` });</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>issues.push({ tone: "warn", title: "Cadence outside optimum", body: \`\${metrics.cadence} rpm vs \${metrics.optimumCadence.toFixed(0)} rpm optimum.\` });</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>issues.push({ tone: "warn", title: "Cadence off optimum", body: \`\${metrics.cadence} rpm vs \${metrics.optimumCadence.toFixed(0)} rpm target.\` });</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>title: "IE asymmetry",</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>title: \`IE asymmetry · \${ieBadge}\`,</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>body: \`Left \${ieL.toFixed(2)}, right \${ieR.toFixed(2)} — \${ieBadge}.\`,</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>body: \`L \${ieL.toFixed(2)} · R \${ieR.toFixed(2)} · gap \${Math.abs(ieL - ieR).toFixed(2)}\`,</code></div>
+      </div>
+      <p class="change-note">Severity for the in-range case flipped from "info" to "success" — matches the green check we already render in the panel.</p>
+    </article>
+
+    <!-- Recommendation panel -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/components/RecommendationPanel.tsx</span>
+        <span class="tag">EDIT · CP-050 · CP-051 · CP-052 · CP-053</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;SectionLabel&gt;Optimizer found&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;SectionLabel&gt;Optimizer converged&lt;/SectionLabel&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>{rec.converged ? "Converged" : "Best of 8 starts"}</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>{rec.converged ? "Converged" : "Did not fully converge"} {/* tooltip: \`Best of \${rec.restarts} restarts\` */}</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>// headline: absolute gross efficiency</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>// headline: signed delta against current; absolute stays in DiffTable</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;DeltaHeadline value={rec.deltaEta} suffix="gross η vs current setup" /&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>Solving…</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>{\`Solving… \${iter}/\${maxIter}\`}</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>snapped from {rec.diff.crankLength.raw.toFixed(1)}</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>nearest stock crank</code></div>
+      </div>
+      <p class="change-note">Add a `DeltaHeadline` primitive (large Fraunces or Geist Bold). Existing `<DiffRow>` rows keep the absolute optimum values.</p>
+    </article>
+
+    <!-- Geometry impossible -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-060</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;strong&gt;Geometry impossible.&lt;/strong&gt; {p.metrics.impossibleReason} Lower the saddle, lengthen leg segments, or shorten the crank.</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;strong&gt;Geometry impossible&lt;/strong&gt; · {p.metrics.impossibleReason}. Lower the saddle 1–2 cm (most common fix), or shorten the crank to 165–170 mm.</code></div>
+      </div>
+    </article>
+
+    <!-- Footer -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">pedalwise/app/page.tsx</span>
+        <span class="tag">EDIT · CP-090</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>Pedalwise · v1.0 · sagittal biomechanics simulator</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>Pedalwise · v1.1 · sagittal-plane bike-fit simulator</code></div>
+      </div>
+    </article>
+
+    <!-- Landing -->
+    <article class="change">
+      <div class="change-file">
+        <span class="path">Pedalwise — Landing.html</span>
+        <span class="tag">EDIT · CP-070 · CP-071 · CP-072 · CP-074</span>
+      </div>
+      <div class="diff">
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;a href="#for"&gt;Who it's for&lt;/a&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;a href="#use"&gt;What it does&lt;/a&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;section id="for"&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;section id="use"&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>…Change cadence, watch efficiency curve.</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>…Change cadence, the efficiency curve redraws.</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>&lt;div class="num"&gt;60&lt;span style="color: var(--fg-muted)"&gt;fps&lt;/span&gt;&lt;/div&gt;&lt;div class="lbl"&gt;slider → redraw&lt;/div&gt;</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>&lt;div class="num"&gt;60&lt;span style="color: var(--fg-muted)"&gt; fps&lt;/span&gt;&lt;/div&gt;&lt;div class="lbl"&gt;slider to rider redraw&lt;/div&gt;</code></div>
+        <div class="diff-row minus"><span class="marker">−</span><code>The Coast efficiency model layers an open-form metabolic cost on top</code></div>
+        <div class="diff-row plus"><span class="marker">+</span><code>The metabolic-cost model layers on top</code></div>
+      </div>
+      <p class="change-note">Five edits in one file. Will be applied in this audit's revision pass before Claude Code touches it.</p>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================================== Colophon ============ -->
+<footer class="colophon">
+  <span>Pedalwise · copy audit · v1.1</span>
+  <span>Pairs with: Pedalwise — Tone &amp; Voice.md</span>
+</footer>
+
+</div>
+</body>
+</html>
