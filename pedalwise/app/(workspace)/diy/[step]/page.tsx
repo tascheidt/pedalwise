@@ -430,7 +430,7 @@ function SimulateStep({ config }: { config: Config }) {
           overflow: "hidden",
         }}
       >
-        <SimulatorWorkspace persona="diy" />
+        <SimulatorWorkspace persona="diy" initialConfig={config} />
       </div>
     </StepShell>
   );

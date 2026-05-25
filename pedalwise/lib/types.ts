@@ -34,7 +34,14 @@ export type PedalMode = "clipped" | "flat";
 
 export type BikeFit = {
   crankLength: number;        // mm
-  saddleHeight: number;       // cm
+  /**
+   * Vertical distance from BB centre up to saddle top, in cm — *not* the
+   * slope distance along the seat tube. Geometry treats this as the y-
+   * coordinate of the saddle in world units (see geometry.ts: sy =
+   * cfg.saddleHeight). Cycling charts that quote "saddle height" along the
+   * seat tube need a cos(seat-tube-angle) projection (≈ × 0.956 for 73°).
+   */
+  saddleHeight: number;       // cm (vertical from BB)
   saddleSetback: number;      // cm
   /** NEW (Stream H) default per discipline. Equipment attribute. */
   pedalMode?: PedalMode;

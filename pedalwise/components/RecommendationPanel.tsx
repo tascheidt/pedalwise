@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import type { Recommendation } from "@/lib/types";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
@@ -20,11 +22,15 @@ function isStockCrank(mm: number): boolean {
 
 export function RecommendationPanel({
   rec,
+  selectedGearIndex,
+  onSelectGear,
   onApply,
   onDismiss,
   onExport,
 }: {
   rec: Recommendation;
+  selectedGearIndex: number;
+  onSelectGear: (i: number) => void;
   onApply: () => void;
   onDismiss: () => void;
   onExport: () => void;
@@ -44,6 +50,23 @@ export function RecommendationPanel({
       ? "nearest stock crank"
       : undefined;
 
+  // Selected gear's cadence overrides the optimizer's continuous cadence in
+  // the diff row: when the user picks a non-best gear, the cadence they will
+  // *actually* pedal at is dictated by that gear ratio × target speed, not
+  // the unconstrained metabolic optimum. Keeping the diff consistent with
+  // what Apply commits is what makes the dialogue honest.
+  const selectedGear = rec.gears[selectedGearIndex] ?? rec.gears[0];
+  const selectedCadence = Math.round(selectedGear.cadenceAtTarget);
+  const cadenceRow = {
+    label: "Cadence",
+    current: rec.diff.cadence.current,
+    optimum: selectedCadence,
+    delta: selectedCadence - rec.diff.cadence.current,
+    unit: "rpm",
+    fmt: (v: number) => v.toFixed(0),
+    note: selectedGearIndex === 0 ? undefined : `from ${selectedGear.label}`,
+  };
+
   const diffRows: DiffTableRow[] = [
     { label: "Saddle height", ...rec.diff.saddleHeight, unit: "cm" },
     {
@@ -53,14 +76,28 @@ export function RecommendationPanel({
       fmt: (v) => v.toFixed(1),
       note: crankNote,
     },
-    {
-      label: "Cadence",
-      ...rec.diff.cadence,
-      unit: "rpm",
-      fmt: (v) => v.toFixed(0),
-    },
+    cadenceRow,
     { label: "Setback", ...rec.diff.saddleSetback, unit: "cm" },
   ];
+
+  const gearListRef = useRef<HTMLDivElement>(null);
+  const handleGearKey = (i: number) => (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const next = (i + 1) % rec.gears.length;
+      onSelectGear(next);
+      gearListRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-gear-index="${next}"]`)
+        ?.focus();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prev = (i - 1 + rec.gears.length) % rec.gears.length;
+      onSelectGear(prev);
+      gearListRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-gear-index="${prev}"]`)
+        ?.focus();
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4" data-testid="recommendation-panel">
@@ -85,19 +122,35 @@ export function RecommendationPanel({
 
       <div>
         <SectionLabel className="mb-2">Gear candidates</SectionLabel>
-        <div className="flex flex-col gap-2">
+        <div
+          ref={gearListRef}
+          role="radiogroup"
+          aria-label="Gear candidates"
+          className="flex flex-col gap-2"
+        >
           {rec.gears.map((g, i) => {
+            const selected = i === selectedGearIndex;
             const best = i === 0;
             return (
-              <div
+              <button
+                type="button"
                 key={g.label}
-                className="rounded-md flex items-center justify-between px-3 py-2"
-                style={{
-                  background: best ? "var(--color-accent-light)" : "var(--color-bg-surface)",
-                  border: `1px solid ${best ? "var(--color-accent)" : "var(--color-border-default)"}`,
-                  borderLeftWidth: best ? 4 : 1,
-                }}
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onSelectGear(i)}
+                onKeyDown={handleGearKey(i)}
                 data-testid={`gear-candidate-${i}`}
+                data-selected={selected}
+                className="rounded-md flex items-center justify-between px-3 py-2 text-left cursor-pointer transition-colors"
+                style={{
+                  background: selected
+                    ? "var(--color-accent-light)"
+                    : "var(--color-bg-surface)",
+                  border: `1px solid ${selected ? "var(--color-accent)" : "var(--color-border-default)"}`,
+                  borderLeftWidth: selected ? 4 : 1,
+                  outline: "none",
+                }}
               >
                 <div className="mono" style={{ fontSize: 13, fontWeight: 500 }}>{g.label}</div>
                 <div className="flex items-center gap-3">
@@ -107,7 +160,7 @@ export function RecommendationPanel({
                   <div className="mono" style={{ fontSize: 13 }}>= {g.ratio.toFixed(2)}</div>
                   {best && <Badge tone="info">best</Badge>}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -193,6 +246,79 @@ export function RecommendationSkeleton({
         <div className="rounded-md pw-pulse" style={{ height: 12, background: "var(--color-bg-alt)", width: "85%" }} />
         <div className="rounded-md pw-pulse" style={{ height: 12, background: "var(--color-bg-alt)", width: "65%" }} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * RecommendationCard — bundles the idle/running/done/error state switch and
+ * the surface card chrome that every workspace (SimulatorWorkspace + fitter
+ * studio) wraps around the rec panel. Eliminates parallel maintenance when
+ * the chrome or state-handling rules evolve. The error branch was previously
+ * silently dropped at both call sites; routing it through one component
+ * forces a single, visible failure mode.
+ */
+export type OptimizerState =
+  | { kind: "idle" }
+  | { kind: "running" }
+  | { kind: "done"; rec: Recommendation }
+  | { kind: "error"; message: string };
+
+export function RecommendationCard({
+  optState,
+  selectedGearIndex,
+  onSelectGear,
+  onApply,
+  onDismiss,
+  onExport,
+}: {
+  optState: OptimizerState;
+  selectedGearIndex: number;
+  onSelectGear: (i: number) => void;
+  onApply: () => void;
+  onDismiss: () => void;
+  onExport: () => void;
+}) {
+  return (
+    <div
+      className="rounded-[10px] p-4"
+      style={{
+        background: "var(--color-bg-surface)",
+        border: "1px solid var(--color-border-default)",
+      }}
+      data-testid="recommendation-card"
+    >
+      {optState.kind === "idle" && <RecommendationIdle />}
+      {optState.kind === "running" && <RecommendationSkeleton />}
+      {optState.kind === "done" && (
+        <RecommendationPanel
+          rec={optState.rec}
+          selectedGearIndex={selectedGearIndex}
+          onSelectGear={onSelectGear}
+          onApply={onApply}
+          onDismiss={onDismiss}
+          onExport={onExport}
+        />
+      )}
+      {optState.kind === "error" && (
+        <div className="flex flex-col gap-3" data-testid="recommendation-error">
+          <SectionLabel>Optimizer error</SectionLabel>
+          <div
+            className="rounded-md p-3"
+            style={{
+              background: "var(--color-danger-bg)",
+              border: "1px solid var(--color-danger)",
+              color: "var(--color-danger)",
+              fontSize: 13,
+            }}
+          >
+            {optState.message}
+          </div>
+          <Button variant="secondary" onClick={onDismiss} data-testid="dismiss-recommendation-error">
+            Dismiss
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

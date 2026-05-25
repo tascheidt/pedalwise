@@ -16,11 +16,7 @@ import { CrankTorqueChart } from "@/components/charts/CrankTorqueChart";
 import { EfficiencyCadenceChart } from "@/components/charts/EfficiencyCadenceChart";
 import { HudStrip } from "@/components/HudStrip";
 import { SpeedControl } from "@/components/SpeedControl";
-import {
-  RecommendationPanel,
-  RecommendationSkeleton,
-  RecommendationIdle,
-} from "@/components/RecommendationPanel";
+import { RecommendationCard } from "@/components/RecommendationPanel";
 import { DiagnosticSidePanel } from "@/components/DiagnosticPanels";
 import { SpeedCadenceGearTriangle } from "@/components/SpeedCadenceGearTriangle";
 import { Badge } from "@/components/Badge";
@@ -38,17 +34,30 @@ export type SimulatorWorkspaceProps = {
    * preference it still wins.
    */
   defaultViewMode?: ViewMode;
+  /**
+   * Seed for the workspace's internal config state. Used by the DIY flow to
+   * hand off the draft built up across steps 2–4 (anatomy, current fit,
+   * goal) into step 5's embedded simulator. Only consumed once at mount;
+   * subsequent draft mutations do not flow in (the workspace owns config
+   * state from that point on).
+   */
+  initialConfig?: Config;
 };
 
-export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: SimulatorWorkspaceProps) {
-  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
-  const [preset, setPreset] = useState<Preset>("5'9\"");
+export function SimulatorWorkspace({
+  persona,
+  defaultViewMode = "anatomical",
+  initialConfig,
+}: SimulatorWorkspaceProps) {
+  const [config, setConfig] = useState<Config>(initialConfig ?? DEFAULT_CONFIG);
+  const [preset, setPreset] = useState<Preset>(initialConfig ? "Custom" : "5'9\"");
   // SSR renders the default; localStorage is read after mount to avoid
   // hydration mismatches when the user's saved mode differs from the default.
   const [mode, setMode] = useState<ViewMode>(defaultViewMode);
   const [speed, setSpeed] = useState(1);
   const [crankAngle, setCrankAngle] = useState(Math.PI / 4);
   const [scrub, setScrub] = useState<number | null>(null);
+  const [selectedGearIndex, setSelectedGearIndex] = useState(0);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
@@ -63,6 +72,12 @@ export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: 
   }, [mode]);
 
   const { state: optState, run: runOptimize, clear: clearOpt } = useOptimizer();
+
+  // Reset gear selection whenever a fresh recommendation arrives so the
+  // user always starts on the optimizer's "best" pick.
+  useEffect(() => {
+    if (optState.kind === "done") setSelectedGearIndex(0);
+  }, [optState]);
 
   // Metrics for HUD + charts
   const metrics = useMemo(() => evaluate(config), [config]);
@@ -85,16 +100,21 @@ export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: 
   const handleApply = useCallback(() => {
     if (optState.kind !== "done") return;
     const rec = optState.rec;
+    // The cadence committed is dictated by the selected gear's ratio at the
+    // target speed, not the optimizer's unconstrained metabolic optimum —
+    // that way "Apply" matches what the user saw in the preview.
+    const gear = rec.gears[selectedGearIndex] ?? rec.gears[0];
+    const cadence = Math.round(gear.cadenceAtTarget);
     setConfig((c) => ({
       ...c,
       saddleHeight: rec.fit.saddleHeight,
       crankLength: rec.fit.crankLength,
       saddleSetback: rec.fit.saddleSetback,
-      cadence: rec.goal.cadence,
+      cadence,
     }));
     setPreset("Custom");
     clearOpt();
-  }, [optState, clearOpt]);
+  }, [optState, selectedGearIndex, clearOpt]);
 
   const handleExport = useCallback(() => {
     if (typeof window !== "undefined") window.print();
@@ -122,7 +142,13 @@ export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: 
 
   const ghostConfig = optState.kind === "done" ? config : null;
   const previewConfig: Config = optState.kind === "done"
-    ? { ...config, ...optState.rec.fit, cadence: optState.rec.goal.cadence }
+    ? {
+        ...config,
+        ...optState.rec.fit,
+        cadence: Math.round(
+          (optState.rec.gears[selectedGearIndex] ?? optState.rec.gears[0]).cadenceAtTarget,
+        ),
+      }
     : config;
 
   return (
@@ -160,6 +186,8 @@ export function SimulatorWorkspace({ persona, defaultViewMode = "anatomical" }: 
           onDismiss={clearOpt}
           onExport={handleExport}
           optState={optState}
+          selectedGearIndex={selectedGearIndex}
+          onSelectGear={setSelectedGearIndex}
         />
       )}
 
@@ -234,6 +262,8 @@ type AnatomicalProps = {
   onDismiss: () => void;
   onExport: () => void;
   optState: ReturnType<typeof useOptimizer>["state"];
+  selectedGearIndex: number;
+  onSelectGear: (i: number) => void;
 };
 
 function AnatomicalLayout(p: AnatomicalProps) {
@@ -338,21 +368,14 @@ function AnatomicalLayout(p: AnatomicalProps) {
 
         {/* Right panel */}
         <div className="flex flex-col gap-3">
-          <div
-            className="rounded-[10px] p-4"
-            style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-default)" }}
-          >
-            {p.optState.kind === "idle" && <RecommendationIdle />}
-            {p.optState.kind === "running" && <RecommendationSkeleton />}
-            {p.optState.kind === "done" && (
-              <RecommendationPanel
-                rec={p.optState.rec}
-                onApply={p.onApply}
-                onDismiss={p.onDismiss}
-                onExport={p.onExport}
-              />
-            )}
-          </div>
+          <RecommendationCard
+            optState={p.optState}
+            selectedGearIndex={p.selectedGearIndex}
+            onSelectGear={p.onSelectGear}
+            onApply={p.onApply}
+            onDismiss={p.onDismiss}
+            onExport={p.onExport}
+          />
 
           {p.optState.kind === "idle" && <CurrentSummary config={p.config} />}
         </div>

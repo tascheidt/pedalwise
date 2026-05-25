@@ -60,11 +60,13 @@ export function CurrentFitForm({ config, onChange }: CurrentFitFormProps) {
       </Card>
 
       <Explainer title="Measuring your current fit">
-        Saddle height runs from the bottom-bracket centre to the top of
-        the saddle, along the seat-tube line. Setback is the horizontal
-        distance from the BB to the saddle nose. Crank length is centre
-        to centre, BB spindle to pedal axle. Holmes range — 25–45° of
-        knee flexion at BDC — is the target the simulator scores against.
+        Saddle height is the <strong>vertical</strong> distance from the
+        bottom-bracket centre up to the top of the saddle — measure with a
+        plumb tape, not along the seat tube. The 2D sagittal model uses
+        vertical hip height directly. Setback is the horizontal distance
+        from the BB to the saddle nose. Crank length is centre to centre,
+        BB spindle to pedal axle. Holmes range — 25–45° of knee flexion at
+        BDC — is the target the simulator scores against.
       </Explainer>
     </div>
   );
